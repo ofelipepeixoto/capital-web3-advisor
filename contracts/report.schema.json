@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Capital Web3 advisory draft 0.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1.0"]},
+    "status": {"type": "string", "enum": ["ok", "needs_input", "degraded", "blocked", "error"]},
+    "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"},
+    "as_of": {"type": "string", "format": "date-time"},
+    "sources": {
+      "type": "array", "maxItems": 50,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "maxLength": 160},
+          "kind": {"type": "string", "enum": ["synthetic", "document", "onchain", "offchain"]},
+          "as_of": {"type": "string", "format": "date-time"}
+        },
+        "required": ["id", "kind", "as_of"]
+      }
+    },
+    "data_quality": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "mode": {"type": "string", "enum": ["synthetic_mock", "reviewed_data", "incomplete"]},
+        "freshness": {"type": "string", "enum": ["not_live", "as_of_snapshot", "stale", "unknown"]},
+        "notes": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 2000}}
+      },
+      "required": ["mode", "freshness", "notes"]
+    },
+    "findings": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "maxLength": 160},
+          "severity": {"type": "string", "enum": ["info", "low", "medium", "high", "critical"]},
+          "title": {"type": "string", "maxLength": 500},
+          "evidence": {"type": "string", "maxLength": 4000}
+        },
+        "required": ["id", "severity", "title", "evidence"]
+      }
+    },
+    "alternatives": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 2000}},
+    "limitations": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 2000}},
+    "human_review": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "required": {"type": "boolean", "enum": [true]},
+        "reviewer": {"type": "null"},
+        "approved": {"type": "boolean", "enum": [false]}
+      },
+      "required": ["required", "reviewer", "approved"]
+    },
+    "next_steps": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 2000}}
+  },
+  "required": ["schema_version", "status", "request_id", "as_of", "sources", "data_quality", "findings", "alternatives", "limitations", "human_review", "next_steps"]
+}
