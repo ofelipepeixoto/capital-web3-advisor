@@ -1,0 +1,114 @@
+{
+  "name": "Capital Web3 | Preparar rascunho de portfólio | INACTIVE TEMPLATE",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "359237f8-e8a2-570a-b4cc-d55cac07eaa1",
+      "name": "Manual Test Only",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "request_preview_json",
+              "value": "{\"authority\": \"authenticated_server_session_required\", \"backend_transport\": \"not_configured\", \"case_ref\": \"synthetic-case-001\", \"data\": {\"analysis\": \"nav_concentration_stress\", \"fixture_id\": \"demo-wallet-001\"}, \"human_review_required\": true, \"mode\": \"preview_only\", \"notify_client\": false, \"operation\": \"portfolio_draft\", \"publish\": false, \"template_version\": \"0.1.0\"}"
+            },
+            {
+              "name": "transport_state",
+              "value": "DISABLED_NO_BACKEND_REQUEST"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "064964f1-e26e-5262-8d72-a2ed6c2ff94b",
+      "name": "Prepare Local Preview",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "notes": "Only prepares synthetic data. No HTTP, OpenAI, RPC, exchange, credentials or client notifications."
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "request_preview_json",
+              "value": "={{ $json.request_preview_json }}"
+            },
+            {
+              "name": "next_step",
+              "value": "Review in consultant console. Authenticated reviewer and explicit server publication are required."
+            },
+            {
+              "name": "delivery_state",
+              "value": "HOLD_NO_PUBLICATION_NO_NOTIFICATION"
+            }
+          ],
+          "boolean": [
+            {
+              "name": "published",
+              "value": false
+            },
+            {
+              "name": "client_notified",
+              "value": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9e69caa5-3df2-5b73-818b-bbe739771db8",
+      "name": "Human Publication Placeholder",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "notes": "Placeholder only; clicking Execute Workflow never approves, publishes or notifies a client."
+    }
+  ],
+  "connections": {
+    "Manual Test Only": {
+      "main": [
+        [
+          {
+            "node": "Prepare Local Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Local Preview": {
+      "main": [
+        [
+          {
+            "node": "Human Publication Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}
