@@ -38,7 +38,10 @@ export class PortalClient {
   async #request(path, { body, token } = {}) {
     let response;
     try {
-      response = await this.fetcher(this.config.base + path, {
+      // Browser fetch is a Web API, not a method of PortalClient. Preserve its
+      // unbound call semantics; Node's fetch and injected mocks hide this issue.
+      const fetchRequest = this.fetcher;
+      response = await fetchRequest(this.config.base + path, {
         method: body === undefined ? 'GET' : 'POST', credentials: 'omit',
         redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(12000),
         headers: { apikey: this.config.key, ...(token ? { Authorization: 'Bearer ' + token } : {}),

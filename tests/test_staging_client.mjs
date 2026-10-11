@@ -40,6 +40,13 @@ test('a late login cannot restore a cleared session', async () => {
   const pending = client.login('x', 'y'); client.clear(); release(auth());
   await assert.rejects(pending, /cancelada/); await assert.rejects(client.api('/reports'), /encerrada/);
 });
+test('native browser fetch is never invoked with the client as its receiver', async () => {
+  const client = new PortalClient(config, { fetcher: async function (url) {
+    assert.equal(this, undefined, 'Web API receiver must not be PortalClient');
+    return url.includes('/token?') ? auth() : session();
+  } });
+  await client.login('x', 'y'); await client.api('/reports'); client.clear();
+});
 test('late report responses cannot cross logout and another login', async () => {
   let release, wait = false;
   const client = new PortalClient(config, { fetcher: async url => {
