@@ -24,7 +24,7 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
     } catch { res.writeHead(500); res.end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  let browser; let gate = 'launch'; const checks = [];
+  let browser; let gate = 'launch'; const checks = [], diagnostics = [];
   const expect = (condition, name) => { if (!condition) throw new Error(name); checks.push(name); };
   try {
     browser = await chromium.launch({ headless: true });
@@ -43,6 +43,11 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
         await route.fulfill({ status: response.status, headers: outputHeaders, body: await response.text() });
       });
       const page = await context.newPage();
+      const network = [], errors = [];
+      page.on('response', response => network.push({ path: new URL(response.url()).pathname, status: response.status() }));
+      page.on('requestfailed', request => network.push({ path: new URL(request.url()).pathname, failed: true }));
+      page.on('pageerror', error => errors.push(error.name));
+      diagnostics.push({ page, network, errors });
       await page.goto('http://127.0.0.1:' + server.address().port);
       await page.locator('#email').fill(users[role].email);
       await page.locator('#password').fill(users[role].password);
@@ -51,10 +56,12 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
       return page;
     }
     gate = 'staff browser login'; const reviewer = await login('rui');
+    gate = 'attachment package open';
     await reviewer.locator('[data-version="' + ids.versionA1 + '"]').click();
     await reviewer.getByText('Esta versão possui anexos.', { exact: false }).waitFor();
     expect(await reviewer.getByRole('button', { name: 'Publicar diagnóstico', exact: true }).count() === 0,
       'asset manifest alone cannot enable publication');
+    gate = 'unreviewed package open';
     await reviewer.locator('[data-version="' + ids.versionA2 + '"]').click();
     await reviewer.getByRole('button', { name: 'Aprovar esta versão', exact: true }).waitFor();
     await reviewer.getByRole('button', { name: 'Aprovar esta versão', exact: true }).click();
@@ -121,6 +128,15 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
     console.log('STAGING CHROMIUM: ' + checks.length + ' assertions passed; real local Auth and database. Edge transport bridged.');
     for (const context of contexts) await context.close();
   } catch {
+    for (const { page, network, errors } of diagnostics) {
+      const notice = await page.locator('#message').textContent().catch(() => '');
+      // All allowed strings are application-owned and never include provider bodies.
+      const known = ['Configuração indisponível.', 'Ambiente ainda não configurado. A equipe precisa concluir a implantação.',
+        'Resposta inválida do serviço.', 'Sessão inválida.', 'Sessão inválida. Entre novamente.',
+        'Conexão indisponível. Confira o estado antes de tentar novamente.',
+        'Não foi possível entrar. Confira suas credenciais ou o convite.', 'Serviço indisponível. Tente novamente mais tarde.'];
+      console.log('STAGING DIAGNOSTIC ' + JSON.stringify({ gate, notice: known.includes(notice) ? notice : 'other_or_empty', network, errors }));
+    }
     // Raw Playwright call logs can contain values filled into credential fields.
     throw new Error('Staging browser gate failed: ' + gate);
   } finally {
