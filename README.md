@@ -11,13 +11,14 @@ não torna públicos os futuros diagnósticos.
 
 ## Testar
 
-Python 3.11 ou superior. Sem pacotes externos para a demonstração.
+Python 3.11 ou superior; Node.js 18+ para o teste de transição da interface.
+Sem pacotes externos para a demonstração ou estes testes.
 
 ```sh
 git clone https://github.com/ofelipepeixoto/capital-web3-advisor.git
 cd capital-web3-advisor
 # Durante a revisão inicial, a implementação completa está nesta branch:
-git checkout feat/integration-contracts
+git checkout feat/supabase-foundation
 make check
 make demo
 ```
@@ -75,6 +76,19 @@ Leia [arquitetura](docs/architecture.md), [backlog](docs/backlog.md),
 Começamos por uma fatia executável de revisão e entrega. Integrações financeiras
 reais, autenticação de produção, automações persistentes e monitoramento dependem
 dos gates descritos nos documentos.
+
+### Implementação para revisão
+
+| PR | Camada | Base |
+|---|---|---|
+| [#1](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/1) | Motor de risco | main |
+| [#2](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/2) | Console e portal local | feat/risk-engine |
+| [#3](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/3) | MCP e n8n | feat/private-advisory-demo |
+| [#4](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/4) | Fundação Supabase | feat/integration-contracts |
+
+Revisar em ordem 1 → 2 → 3 → 4. As branches têm dependências explícitas;
+nenhuma stack nativa foi presumida. A branch **feat/supabase-foundation** contém
+o projeto completo para testes. Nenhum PR foi mesclado; revisão humana pendente.
 
 ## Direitos
 
