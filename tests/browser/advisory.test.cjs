@@ -236,13 +236,32 @@ test(CASES[0], { timeout: 60000 }, async () => {
   assert.equal(delivered.id, id);
   assert.equal(delivered.version, report.version);
   assert.equal(delivered.case_id, 'case-a');
-  await doAction(client, 'Confirmar recebimento', `/api/reports/${id}/receipt`);
+  // A real receipt refresh is held after authorization. The customer starts
+  // typing before it completes; rerender must preserve text and keyboard focus.
+  const refreshFetched = deferred(), refreshRelease = deferred(), refreshCompleted = deferred();
+  await client.route(`**/api/reports/${id}`, async route => {
+    try {
+      const response = await route.fetch();
+      assert.equal(response.status(), 200);
+      refreshFetched.resolve(); await refreshRelease.promise;
+      await route.fulfill({ response }); refreshCompleted.resolve();
+    } catch (error) { refreshFetched.reject(error); refreshCompleted.reject(error); }
+  });
+  const receiving = doAction(client, 'Confirmar recebimento', `/api/reports/${id}/receipt`);
+  await Promise.race([refreshFetched.promise, receiving.then(() => { throw new Error('Receipt completed before its held refresh'); })]);
+  const question = 'Pode explicar os limites deste cenário fictício?';
+  await client.getByLabel('Dúvida sobre o diagnóstico').fill(question);
+  refreshRelease.resolve(); await refreshCompleted.promise; await receiving;
+  await client.unroute(`**/api/reports/${id}`);
+  assert.equal(await client.getByLabel('Dúvida sobre o diagnóstico').inputValue(), question);
+  assert.equal(await client.getByLabel('Dúvida sobre o diagnóstico').evaluate(input => input === document.activeElement), true);
   await client.getByText('Recebimento confirmado para esta versão.', { exact: true }).waitFor();
   // Receipt is idempotent and cannot approve a strategy or authorize a trade.
   await doAction(client, 'Confirmar recebimento', `/api/reports/${id}/receipt`);
-  await client.getByLabel('Dúvida sobre o diagnóstico').fill('Pode explicar os limites deste cenário fictício?');
+  assert.equal(await client.getByLabel('Dúvida sobre o diagnóstico').inputValue(), question);
   await doAction(client, 'Enviar dúvida', `/api/reports/${id}/clarify`);
-  await client.getByText('Pode explicar os limites deste cenário fictício?', { exact: true }).waitFor();
+  await client.getByText(question, { exact: true }).waitFor();
+  assert.equal(await client.getByLabel('Dúvida sobre o diagnóstico').inputValue(), '');
   await screenshot(client, '03-client-delivery-receipt-clarification');
 
   const outsider = await newPage();

@@ -15,17 +15,21 @@ sequência de trabalho, não compromisso de implantação automática.
 ## Próximas implementações
 
 1. Auth real para equipe/cliente, MFA de staff, convites/expiração e membership.
-2. Persistência dos objetos, aprovação imutável, auditoria e retenção com RLS.
+2. Aplicar a persistência dos objetos, aprovação imutável e auditoria RLS em
+   staging privado; configurar retenção. SQL/RPCs e API já preparados na etapa
+   técnica; execução CI fica em `docs/homologation.md`.
 3. Importação CSV validada; consentimento e catálogo de fontes de leitura.
 4. Uma rede EVM e BTC somente observação; verificar finality/reorg/RPC/staleness.
 5. Dois protocolos após validação de adapters, endereços/chain IDs e evidências.
 6. RPC, DEX quotes, pools, allowances e simulação sem calldata de execução.
 7. OpenAI Responses: schema validado, refusals/incomplete/errors tratados;
-   reserva atômica persistente e limites de tokens/custo antes de ligar consumo.
+   integrar as reservas SQLite ou equivalentes transacionais e limites de
+   tokens/custo antes de ligar consumo. Reservas locais já são testadas.
 8. MCP remoto com autenticação e políticas por ferramenta/objeto.
 9. n8n cinco fluxos: importar, gerar draft, monitorar escopo, entregar após
    confirmação do backend e revisar falhas. Idempotency, dead-letter, timeouts.
-10. Download autorizado, TTL, revogação e políticas Storage testados juntos.
+10. Portar download autorizado, TTL, revogação e Storage do ensaio descartável
+    para o portal com Auth real e validar o fluxo completo em staging privado.
 
 ## Escopo futuro especializado
 

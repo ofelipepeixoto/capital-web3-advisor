@@ -2,10 +2,10 @@
 const $ = id => document.getElementById(id);
 const names = {'ana':'Ana · consultora','rui':'Rui · revisor','client-a':'Cliente A','client-b':'Cliente B'};
 const states = {draft:'Rascunho',approved:'Aprovado',published:'Publicado',revoked:'Revogado'};
-let session = null, reports = [], selected = null, cases = [];
+let session = null, reports = [], selected = null, cases = [], renderedReportId = null;
 let sessionGeneration = 0, detailGeneration = 0, signingIn = false;
 let noticeTimer;
-function clearWorkspace() { reports=[];cases=[];selected=null;detailGeneration++;for(const id of ['report-list','detail','summary','risk-output'])$(id).replaceChildren();$('count').textContent='0'; }
+function clearWorkspace() { reports=[];cases=[];selected=null;renderedReportId=null;detailGeneration++;for(const id of ['report-list','detail','summary','risk-output'])$(id).replaceChildren();$('count').textContent='0'; }
 function notify(message, error = false) { $('notice').textContent = message; $('notice').classList.toggle('error', error); $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => $('notice').hidden = true, 6000); }
 async function api(path, data) {
   const headers = {};
@@ -36,14 +36,17 @@ async function refresh() {
   $('count').textContent=reports.length; $('report-list').replaceChildren();
   if(!reports.length) $('report-list').append(text('p','Nenhum diagnóstico foi publicado para você ainda.','caption'));
   for(const r of reports){const b=document.createElement('button');b.className='report-row';b.dataset.id=r.id;const state=r.state||r.status;b.append(text('span',states[state]||state,'badge '+state),text('strong',r.title||'Diagnóstico de portfólio'),text('small',`Versão ${r.version} · ${r.case_id}`));b.addEventListener('click',()=>showReport(r.id).catch(e=>notify(e.message,true)));$('report-list').append(b);}
-  if(selected&&reports.some(r=>r.id===selected))await showReport(selected); else {selected=null;$('detail').replaceChildren(text('h2',reports.length?'Selecione um diagnóstico':'A entrega aparecerá aqui'),text('p','O acesso depende de revisão, publicação e autorização.','caption'));}
+  if(selected&&reports.some(r=>r.id===selected))await showReport(selected); else {selected=null;renderedReportId=null;$('detail').replaceChildren(text('h2',reports.length?'Selecione um diagnóstico':'A entrega aparecerá aqui'),text('p','O acesso depende de revisão, publicação e autorização.','caption'));}
 }
-async function action(path, body, message) { const generation=sessionGeneration;await api(path,body);if(generation!==sessionGeneration||!session)return;notify(message);await refresh(); }
+async function action(path, body, message, onSuccess) { const generation=sessionGeneration;await api(path,body);if(generation!==sessionGeneration||!session)return;onSuccess?.();notify(message);await refresh(); }
 async function showReport(id) {
   const generation=sessionGeneration,request=++detailGeneration;
   const r=await api('/api/reports/'+encodeURIComponent(id));
   if(generation!==sessionGeneration||request!==detailGeneration||!session)return;
-  selected=id;
+  const previousInput=renderedReportId===id?$('detail').querySelector('.clarification'):null;
+  const question=previousInput?.value||'',refocus=previousInput&&document.activeElement===previousInput;
+  const caretStart=previousInput?.selectionStart,caretEnd=previousInput?.selectionEnd;
+  selected=id;renderedReportId=id;
   document.querySelectorAll('.report-row').forEach(el=>el.classList.toggle('selected',el.dataset.id===id));
   const panel=$('detail'),payload=r.payload||r.content||{},state=r.state||r.status;panel.replaceChildren(text('span',states[state]||state,'badge '+state),text('h2',r.title||'Diagnóstico de portfólio','detail-title'));
   const meta=text('div','','meta');meta.append(text('span',`VERSÃO ${r.version}`),text('span',r.case_id),text('span',r.review?.approved_by?`REVISOR: ${r.review.approved_by}`:'REVISÃO PENDENTE'));panel.append(meta);
@@ -59,7 +62,7 @@ async function showReport(id) {
   actions.append(button('Baixar diagnóstico',async()=>{const generation=sessionGeneration;const response=await fetch(base+'/download',{credentials:'same-origin'});if(!response.ok)throw new Error((await response.json()).error);const blob=await response.blob();if(generation!==sessionGeneration||!session)return;const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=id+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}));
   if(p.acknowledge)actions.append(button('Confirmar recebimento',()=>action(base+'/receipt',{},'Recebimento registrado. Isso não aprova uma estratégia ou transação.')));
   panel.append(actions);
-  if(p.clarify){panel.append(text('h3','Pedir esclarecimento'));const input=document.createElement('textarea');input.className='clarification';input.placeholder='Escreva sua dúvida sobre este diagnóstico';input.maxLength=2000;input.setAttribute('aria-label','Dúvida sobre o diagnóstico');panel.append(input,button('Enviar dúvida',()=>action(base+'/clarify',{message:input.value},'Dúvida registrada no atendimento.')));}
+  if(p.clarify){panel.append(text('h3','Pedir esclarecimento'));const input=document.createElement('textarea');input.className='clarification';input.value=question;input.placeholder='Escreva sua dúvida sobre este diagnóstico';input.maxLength=2000;input.setAttribute('aria-label','Dúvida sobre o diagnóstico');panel.append(input,button('Enviar dúvida',()=>{const message=input.value;return action(base+'/clarify',{message},'Dúvida registrada no atendimento.',()=>{const current=renderedReportId===id?panel.querySelector('.clarification'):null;if(current?.value===message)current.value='';});}));if(refocus){input.focus({preventScroll:true});input.setSelectionRange(caretStart??question.length,caretEnd??question.length);}}
   if(r.receipt)panel.append(text('p','Recebimento confirmado para esta versão.','caption'));
   if(r.clarifications?.length){panel.append(text('h3','Esclarecimentos do atendimento'));for(const note of r.clarifications){const div=text('div','','finding');div.append(text('strong',note.created_by),text('p',note.message));panel.append(div);}}
 }

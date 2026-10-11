@@ -9,7 +9,7 @@ carteiras, Supabase, OpenAI paga ou credenciais de clientes.
 
 | Caso | Evidência de comportamento |
 |---|---|
-| Revisão e entrega | Ana prepara versão; cliente A não lê o rascunho; Rui aprova e publica; cliente A baixa essa versão, confirma recebimento e pede esclarecimento |
+| Revisão e entrega | Ana prepara versão; cliente A não lê o rascunho; Rui aprova e publica; cliente A baixa essa versão, confirma recebimento e pede esclarecimento; uma dúvida digitada enquanto a confirmação atualiza o relatório mantém texto e foco |
 | Isolamento e revogação | Cliente B recebe somente B; URL e download de A retornam o mesmo 404 de recurso ausente; Rui revoga; cliente A perde novas leituras e downloads |
 | Resposta atrasada | Resposta verdadeira autorizada do caso A é atrasada no transporte; logout e entrada como B ocorrem antes da liberação; nenhum dado A reaparece |
 | Download atrasado | Resposta verdadeira de download A é atrasada; após logout e entrada como B nenhum arquivo é gerado |
@@ -77,6 +77,15 @@ O helper foi corrigido para aguardar o `finally` do controle original da ação,
 incluindo o refresh, antes da próxima interação. A API continua sendo obrigada
 a retornar o status esperado; a correção não aceita o 400 como sucesso.
 O fluxo inteiro ainda precisa passar em nova execução para aprovar este gate.
+
+A interface também foi corrigida para preservar texto, foco e posição do cursor
+ao atualizar o mesmo relatório na mesma sessão. A dúvida é limpa após envio
+bem-sucedido, quando o campo ainda contém a mensagem enviada; texto novo digitado
+durante o envio permanece. Troca de relatório, caso ou sessão não reaproveita a
+dúvida anterior. O fluxo E2E agora atrasa uma resposta real do refresh de receipt
+e digita antes de liberá-la, verificando a preservação no navegador. O harness
+DOM tem sete cenários aprovados, incluindo preservação de texto novo durante
+envio e limpeza nas transições.
 
 O artifact `synthetic-browser-38108152731` contém 17 PNGs e cinco manifests;
 o ZIP baixado foi verificado contra o SHA-256

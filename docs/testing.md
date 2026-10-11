@@ -1,7 +1,7 @@
 # Evidências de testes
 
 Validação local realizada em **2026-10-11**, Python **3.12.14**, Node **24.19.0**.
-O ambiente completo foi testado antes de publicar as camadas para revisão.
+As camadas locais foram testadas antes de publicar para revisão.
 Na branch `main` inicial há apenas a estrutura e documentação.
 
 ## Resultados observados
@@ -14,10 +14,13 @@ Na branch `main` inicial há apenas a estrutura e documentação.
 | Adapter | 7 aprovados | Contrato, flags/injection, consumo pago desativado |
 | MCP | 7 aprovados | Handshake local, tools read-only, inputs rejeitados |
 | n8n | 1 aprovado | Cinco JSONs inativos, sem credentials/transporte |
-| UI session | 2 cenários aprovados | JS real em harness DOM: logout e respostas atrasadas |
-| Public files | Aprovado | Parse dos 6 JSONs e inspeção limitada de arquivos |
+| Budget | 8 aprovados | Zero default, concorrência, quotas, idempotência e reconciliação |
+| Jobs/webhook | 7 aprovados | Leases, retries, restart, scopes e replay HMAC |
+| UI session | 7 cenários aprovados | JS real em harness DOM: logout, respostas atrasadas, restauração e texto de esclarecimento |
+| API autenticada | 31 aprovados | Handler real, upstream mock; Auth, JWT preservado, closed inputs e deadline |
+| Public files | Aprovado | Parse JSON e inspeção limitada de arquivos |
 
-**Total Python: 68 testes, zero falhas e zero skips.**
+**Total Python: 83 testes, zero falhas e zero skips.**
 A camada do portal (PR2) contém 60 desses testes e os 2 cenários JS;
 MCP/n8n (PR3) acrescentam 8. O teste HTTP abriu servidor efêmero somente em
 127.0.0.1, com fixtures e sem chamadas externas. A execução inicial em sandbox
@@ -25,8 +28,10 @@ impediu sockets; a execução autorizada de loopback passou integralmente.
 
 Correções verificadas: persistência do schema de relatório; negação de POST
 download; limpeza de dados e descarte de respostas antigas na troca de persona.
-Revisão independente SQL encontrou e corrigiu o vínculo de aprovação ao hash
-do manifesto dos arquivos, além do conteúdo; essa correção foi inspecionada.
+Revisão independente encontrou e corrigiu o vínculo de aprovação ao hash
+do manifesto dos arquivos, INSERT direto de recibos que contornava locks,
+deadline do corpo HTTP e restauração tardia de sessão. O logout permanece
+visível em mobile. Esses controles ainda exigem execução real por camada.
 
 ## Executar sem serviços externos
 
@@ -41,13 +46,14 @@ contratos de relatório e ferramentas MCP locais quando cada camada é adicionad
 
 ## Não comprovado pela suite local
 
-Supabase/RLS/Storage/Auth reais, OpenAI API, cliente MCP de terceiros, n8n,
-Sites, VPS, backups e operação persistente. Os testes SQL são preparados para
-ambiente Supabase descartável. Parse do JSON n8n não é execução na instância.
+OpenAI API, cliente MCP de terceiros, n8n, Sites, VPS, backups e operação
+de produção. Supabase/RLS/Storage/Auth e Chromium são verificados por jobs
+separados; veja [o registro de execução e gates](homologation.md).
+Parse do JSON n8n não é execução na instância.
 O verificador de arquivos é uma inspeção limitada, não uma auditoria completa.
-O fluxo visual/layout em navegador ainda não foi validado: Playwright estava
-disponível sem binário Chromium e o download falhou. A validação JS é um harness,
-não uma execução visual ou teste de acessibilidade.
+A validação DOM é um harness, separado da suite Chromium. A execução Chromium
+local não encontrou o binário; a CI instala e exercita o navegador real.
+PNGs permitem revisão de layout, sem equivaler a certificação de acessibilidade.
 
 ## Revisão
 

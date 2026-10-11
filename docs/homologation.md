@@ -34,7 +34,20 @@ A CI encerra o stack e remove status e logs privados, inclusive se falhar.
 
 ## Registro de execução
 
-Resultados finais, commit e links das execuções serão registrados após a CI.
+Regressão local em 2026-10-11: 83 testes Python, 7 cenários DOM e 31 contratos
+HTTP aprovados, sem skips. Revisão independente corrigiu exclusividade do RPC
+de recibo, deadline de corpo HTTP e restauração tardia da sessão.
+
+Primeira execução real do commit `3c5dba3cf65cdd24825b3e33770266dcbad3a0bf`:
+[CI](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38108155076).
+As duas migrações foram aplicadas no Supabase descartável. A suíte SQL parou
+no GRANT do alias `pg_temp`; ambas as suites passaram a usar o nome real do
+schema temporário. O Chromium executou 4/5 cenários; o helper aguardava apenas
+HTTP, antes de terminar o refresh da UI. Foi corrigido para aguardar a ação.
+Essas falhas não foram contabilizadas como homologação aprovada.
+
+Resultados finais, commit e links da execução após correções serão registrados
+após a CI.
 Uma suite preparada ou um teste com mock não satisfaz o gate de execução real.
 
 ## Gates restantes antes de clientes reais
@@ -45,6 +58,7 @@ Uma suite preparada ou um teste com mock não satisfaz o gate de execução real
 | Staging privado na nuvem | Projeto dedicado; consulta de custo/provisionamento indisponível no conector desta sessão; projetos existentes preservados |
 | Identidade de produção | Edge gateway deployed, issuer/audience/expiry, MFA, convites, invalidacão de sessões e ACL sob testes |
 | Portal conectado ao backend | Frontend com Auth real, sem personas; testes E2E atravessando Edge+Auth+Storage |
+| Arquivos e revogação | Pipeline de objetos imutáveis/endereço por conteúdo; verificar bytes no download; política para arquivos já baixados e signed URLs/TTL |
 | Evidências financeiras | Consentimento, fontes permitidas, timestamps, validação semântica e retenção/exclusão |
 | OpenAI paga | Projeto/chave no cofre, modelo/custo verificados e orçamento aprovado; adapter permanece bloqueado |
 | n8n | Instância/versão, integração de credenciais, webhook/queue e cinco fluxos reais testados; templates inativos |

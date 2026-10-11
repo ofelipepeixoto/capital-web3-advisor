@@ -12,6 +12,7 @@ class Element {
   replaceChildren(...nodes) { this._text='';this.children=[...nodes]; }
   addEventListener(name, callback) { this.handlers[name]=callback; }
   setAttribute() {}
+  querySelector(selector) { for(const child of this.children){if(selector==='.'+child.className)return child;const found=child.querySelector(selector);if(found)return found;}return null; }
 }
 
 async function harness({deferInitialSession=false}={}) {
@@ -95,4 +96,54 @@ async function harness({deferInitialSession=false}={}) {
   assert.equal(c.nodes.detail.textContent,clientWorkspace);
   assert.equal(c.pending.length,0,'Stale restoration started a second refresh');
   console.log('PASS: late initial restore cannot replace a completed login');
+
+  // Preserve a question typed while the receipt's report refresh is in flight.
+  const q=await harness();
+  q.run("session={subject:'client-a',role:'client',csrf_token:'local'};sessionGeneration=1;");
+  const report={id:'report-a-v1',title:'Synthetic A',version:1,case_id:'case-a',state:'published',payload:{},permissions:{clarify:true,acknowledge:true}};
+  const open=q.run("showReport('report-a-v1')");q.resolve(q.pending.shift(),report);await open;
+  const receiptButton=q.nodes.detail.children.find(node=>node.className==='actions').children.find(node=>node.textContent==='Confirmar recebimento');
+  const receipt=receiptButton.handlers.click();q.resolve(q.pending.shift(),{is_approval:false});
+  await new Promise(setImmediate);
+  q.resolve(q.pending.shift(),[report]);q.resolve(q.pending.shift(),[{id:'case-a'}]);
+  await new Promise(setImmediate);
+  const freshReport=q.pending.shift();
+  q.nodes.detail.querySelector('.clarification').value='Question entered during refresh';
+  q.resolve(freshReport,{...report,receipt:{status:'acknowledged'}});await receipt;
+  assert.equal(q.nodes.detail.querySelector('.clarification').value,'Question entered during refresh');
+  assert.equal(q.nodes.detail.textContent.includes('Recebimento confirmado para esta versão.'),true);
+  const sendButton=q.nodes.detail.children.find(node=>node.textContent==='Enviar dúvida');
+  const sent=sendButton.handlers.click();const sendRequest=q.pending.shift();
+  assert.equal(JSON.parse(sendRequest.options.body).message,'Question entered during refresh');
+  q.resolve(sendRequest,{status:'received'});await new Promise(setImmediate);
+  q.resolve(q.pending.shift(),[report]);q.resolve(q.pending.shift(),[{id:'case-a'}]);
+  await new Promise(setImmediate);q.resolve(q.pending.shift(),report);await sent;
+  assert.equal(q.nodes.detail.querySelector('.clarification').value,'');
+  console.log('PASS: receipt refresh preserves question; successful send clears it');
+
+  // A newly typed draft during a successful send is different from that send.
+  q.nodes.detail.querySelector('.clarification').value='Submitted second question';
+  const sending=q.nodes.detail.children.find(node=>node.textContent==='Enviar dúvida').handlers.click();
+  const secondSend=q.pending.shift();
+  assert.equal(JSON.parse(secondSend.options.body).message,'Submitted second question');
+  q.nodes.detail.querySelector('.clarification').value='New draft typed while sending';
+  q.resolve(secondSend,{status:'received'});await new Promise(setImmediate);
+  q.resolve(q.pending.shift(),[report]);q.resolve(q.pending.shift(),[{id:'case-a'}]);
+  await new Promise(setImmediate);q.resolve(q.pending.shift(),report);await sending;
+  assert.equal(q.nodes.detail.querySelector('.clarification').value,'New draft typed while sending');
+  console.log('PASS: completing a send preserves a newer unsent question');
+
+  // Switching report or logging out cannot carry an unsent question across contexts.
+  q.nodes.detail.querySelector('.clarification').value='Unsent private question';
+  const other=q.run("showReport('report-a-v2')");
+  q.resolve(q.pending.shift(),{...report,id:'report-a-v2',version:2});await other;
+  assert.equal(q.nodes.detail.querySelector('.clarification').value,'');
+  q.nodes.detail.querySelector('.clarification').value='Another private question';
+  const leave=q.nodes.logout.handlers.click();q.resolve(q.pending.shift(),{ok:true});await leave;
+  assert.equal(q.nodes.detail.querySelector('.clarification'),null);
+  const next=q.run("enterSession({subject:'client-b',role:'client',csrf_token:'next-local'})");
+  q.resolve(q.pending.shift(),[]);q.resolve(q.pending.shift(),[{id:'case-b'}]);await next;
+  assert.equal(q.nodes.detail.querySelector('.clarification'),null);
+  console.log('PASS: unsent question is cleared across report and session transitions');
+  q.run('clearTimeout(noticeTimer)');
 })().catch(error=>{console.error(error);process.exitCode=1;});
