@@ -77,6 +77,8 @@ Esta estrutura deriva do plano fornecido **v1.2**, adaptado ao escopo público.
 Leia [arquitetura](docs/architecture.md), [backlog](docs/backlog.md),
 [staging](docs/staging.md), [testes](docs/testing.md) e
 [homologação técnica e gates](docs/homologation.md).
+O [portal autenticado para staging](docs/authenticated-staging.md) tem login
+Supabase e bundle próprio; depende da implantação dedicada descrita no roteiro.
 Começamos por uma fatia executável de revisão e entrega. Integrações financeiras
 reais, autenticação de produção, conexão das automações e monitoramento dependem
 dos gates descritos nos documentos.
@@ -96,8 +98,9 @@ dos gates descritos nos documentos.
 As novas camadas de homologação seguem os quatro PRs iniciais:
 `feat/authenticated-human-workflow` → `feat/durable-budgets-jobs` →
 `feat/homologation-evidence`. A última contém o candidato completo para testes.
-As branches têm dependências explícitas. Nenhum PR foi mesclado;
-revisão humana pendente. Consulte o registro de CI em `docs/homologation.md`.
+As branches têm dependências explícitas. Os PRs #1–#7 permanecem abertos.
+O PR #9, de contexto de leitura, foi integrado à branch de homologação.
+Novas camadas seguem para revisão humana. Consulte `docs/homologation.md`.
 
 ## Direitos
 

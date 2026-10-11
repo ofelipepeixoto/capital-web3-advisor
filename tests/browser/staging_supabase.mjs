@@ -51,6 +51,10 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
       return page;
     }
     gate = 'staff browser login'; const reviewer = await login('rui');
+    await reviewer.locator('[data-version="' + ids.versionA1 + '"]').click();
+    await reviewer.getByText('Esta versão possui anexos.', { exact: false }).waitFor();
+    expect(await reviewer.getByRole('button', { name: 'Publicar diagnóstico', exact: true }).count() === 0,
+      'asset manifest alone cannot enable publication');
     await reviewer.locator('[data-version="' + ids.versionA2 + '"]').click();
     await reviewer.getByRole('button', { name: 'Aprovar esta versão', exact: true }).waitFor();
     await reviewer.getByRole('button', { name: 'Aprovar esta versão', exact: true }).click();
@@ -76,6 +80,12 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
       overflow: document.documentElement.scrollWidth > innerWidth }));
     expect(storage.local === 0 && storage.session === 0, 'no persistent browser tokens');
     expect(!storage.overflow, 'mobile page fits viewport');
+    const artifact = process.env.CAPITAL_BROWSER_ARTIFACT_DIR;
+    if (artifact) {
+      await mkdir(artifact, { recursive: true });
+      await client.screenshot({ path: artifact + '/staging-client-mobile.png', fullPage: true });
+      await reviewer.screenshot({ path: artifact + '/staging-reviewer-desktop.png', fullPage: true });
+    }
     gate = 'authorized download';
     const downloadPromise = client.waitForEvent('download');
     await client.getByRole('button', { name: 'Baixar diagnóstico', exact: true }).click();
@@ -99,7 +109,6 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
     gate = 'logout and reload'; await client.locator('#logout').click();
     await client.locator('#login-panel').waitFor({ state: 'visible' }); await client.reload();
     expect(await client.locator('#workspace').isHidden(), 'reload cannot restore previous session');
-    const artifact = process.env.CAPITAL_BROWSER_ARTIFACT_DIR;
     if (artifact) {
       await mkdir(artifact, { recursive: true });
       await client.screenshot({ path: artifact + '/staging-client-signed-out.png', fullPage: true });
