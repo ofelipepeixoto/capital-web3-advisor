@@ -5,7 +5,13 @@
 begin;
 
 create temporary table advisory_test_sentinel(id integer);
-grant usage on schema pg_temp to authenticated, anon;
+-- GRANT SCHEMA does not resolve the pg_temp alias; grant the actual
+-- transaction-local namespace created by the temporary table above.
+do $$ declare temporary_schema text; begin
+  select nspname into strict temporary_schema from pg_catalog.pg_namespace
+    where oid = pg_catalog.pg_my_temp_schema();
+  execute pg_catalog.format('grant usage on schema %I to authenticated, anon',temporary_schema);
+end $$;
 create function pg_temp.require(p_condition boolean, p_label text)
 returns void language plpgsql security invoker as $$
 begin
