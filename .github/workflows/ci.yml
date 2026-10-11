@@ -17,6 +17,9 @@ jobs:
           persist-credentials: false
       - name: Runtime
         run: python3 --version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6 verified 2026-10-11
+        with:
+          node-version: '24'
       - name: Test and inspect public files
         run: |
           if test -f tests/test_risk.py; then

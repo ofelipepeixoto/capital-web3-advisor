@@ -6,6 +6,7 @@ test:
 check: test
 	$(PYTHON) scripts/check_repository.py
 	@if test -f tests/test_ui_session.cjs; then node tests/test_ui_session.cjs; fi
+	@if test -f tests/test_api_staging.mjs; then node --test tests/test_api_staging.mjs; fi
 demo:
 	$(PYTHON) -m capital_web3.server
 mcp:

@@ -1,6 +1,6 @@
 -- FUTURE INTEGRATION SUITE: run as database owner on isolated Supabase staging.
 -- Synthetic claims exercise RLS, NOT JWT signature/login or real Storage bytes.
--- Requires 0001_advisory.sql and auth/storage schemas. Everything rolls back.
+-- Requires 0001+0002 and auth/storage schemas. Everything rolls back.
 -- psql --set ON_ERROR_STOP=1 --file supabase/tests/authorization.sql
 begin;
 
@@ -153,12 +153,14 @@ end $$;
 select pg_temp.expect_error('delete from public.advisory_report_versions','42501','client cannot delete reports');
 select pg_temp.expect_error($q$insert into storage.objects(bucket_id,name)
   values ('capital-web3-advisory','client-upload.pdf')$q$,'42501','client cannot upload into report bucket');
-insert into public.advisory_receipts(id,publication_id,case_id,report_version_id,user_id,received_at) values
-  ('70000000-0000-0000-0000-000000000001','60000000-0000-0000-0000-000000000001',
-   '20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001',
-   '10000000-0000-0000-0000-000000000001','2099-01-01');
-select pg_temp.require((select received_at = now() from public.advisory_receipts
-  where id='70000000-0000-0000-0000-000000000001'),'receipt timestamp is server-generated');
+select pg_temp.expect_error($q$insert into public.advisory_receipts(publication_id,case_id,report_version_id,user_id,received_at)
+  values ('60000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
+   '40000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','2099-01-01')$q$,
+  '42501','even an authorized recipient cannot bypass the locking receipt RPC');
+select public.advisory_record_receipt('60000000-0000-0000-0000-000000000001');
+select pg_temp.require((select received_at = now() and user_id=(select auth.uid()) from public.advisory_receipts
+  where publication_id='60000000-0000-0000-0000-000000000001'),
+  'receipt timestamp and identity are server-generated');
 insert into public.advisory_clarifications(id,publication_id,case_id,report_version_id,author_user_id,thread_client_user_id,entry_kind,message)
 values ('80000000-0000-0000-0000-000000000001','60000000-0000-0000-0000-000000000001',
   '20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001',
@@ -285,10 +287,8 @@ select set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000001'
 select pg_temp.require((select count(*) = 0 from public.advisory_report_versions),'revoked publication hides exact report version');
 select pg_temp.require((select count(*) = 0 from storage.objects where bucket_id='capital-web3-advisory'),
   'revoked publication hides object metadata');
-select pg_temp.expect_error($q$insert into public.advisory_receipts(publication_id,case_id,report_version_id,user_id)
-  values ('60000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
-   '40000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001')$q$,
-  '42501','client cannot acknowledge a revoked publication');
+select pg_temp.expect_error($q$select public.advisory_record_receipt('60000000-0000-0000-0000-000000000001')$q$,
+  '42501','client cannot acknowledge a revoked publication through the locking RPC');
 reset role;
 select set_config('request.jwt.claims','{}',true);
 select set_config('request.jwt.claim.sub','',true);
