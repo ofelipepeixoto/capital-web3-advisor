@@ -60,8 +60,31 @@ secrets ou um servidor demo público para esses testes.
 Em 2026-10-11, a preparação local verificou sintaxe e listagem dos cinco
 testes. O runtime tem Playwright 1.62.1, mas não contém Chromium; a instalação
 anterior de navegador falhou. Essa preparação **não comprova execução de E2E**
-ou inspeção visual. O resultado real deverá ser registrado pelo job de CI;
-ausência de navegador causa falha, sem marcar o gate como aprovado ou skip.
+ou inspeção visual. Ausência de navegador causa falha, sem marcar o gate como
+aprovado ou skip. A execução real em CI foi iniciada separadamente.
+
+### Primeira execução Chromium em CI
+
+O job [browser-homologation](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38108152731/job/114377941072)
+executou o commit `3c5dba3cf65cdd24825b3e33770266dcbad3a0bf`, com Node 24.21.0
+e Chromium 151.0.7922.34: **quatro testes passaram e um falhou**, sem skips.
+Os testes de detalhe/download/restauração atrasados e desktop/mobile passaram.
+O fluxo completo chegou à confirmação de recebimento, mas o teste digitou
+na textarea enquanto a segunda confirmação ainda atualizava o DOM; a atualização
+substituiu o campo e o envio subsequente foi rejeitado como vazio.
+
+O helper foi corrigido para aguardar o `finally` do controle original da ação,
+incluindo o refresh, antes da próxima interação. A API continua sendo obrigada
+a retornar o status esperado; a correção não aceita o 400 como sucesso.
+O fluxo inteiro ainda precisa passar em nova execução para aprovar este gate.
+
+O artifact `synthetic-browser-38108152731` contém 17 PNGs e cinco manifests;
+o ZIP baixado foi verificado contra o SHA-256
+`0424ddc312a70f359d25967f297d1719ce1911ea4d71a70281e162723aabff81`.
+Todos os manifests registram zero erros de JavaScript e zero chamadas externas.
+Capturas desktop/mobile foram inspecionadas: logout permanece visível no
+mobile, sem rolagem horizontal nos tamanhos testados. Isto é aceite visual
+técnico dos fixtures; revisão humana e autenticação persistente seguem pendentes.
 
 A revisão estática encontrou duas falhas de interface corrigidas nesta etapa:
 logout escondido no CSS de telas pequenas e restauração inicial atrasada que

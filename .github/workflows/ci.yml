@@ -1,6 +1,7 @@
 name: local-validation
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -47,6 +48,13 @@ jobs:
         env:
           CAPITAL_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/capital-browser
         run: npm test --prefix tests/browser
+      - name: Retain registry-generated dependency lock
+        if: always()
+        run: |
+          if test -f tests/browser/package-lock.json; then
+            mkdir -p "$RUNNER_TEMP/capital-browser"
+            cp tests/browser/package-lock.json "$RUNNER_TEMP/capital-browser/package-lock.json"
+          fi
       - name: Retain synthetic screenshots and manifests
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 verified 2026-10-11

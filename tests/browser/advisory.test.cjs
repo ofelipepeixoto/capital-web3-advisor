@@ -158,11 +158,20 @@ async function viewReport(page, id) {
   await page.locator('#detail .meta').waitFor();
 }
 async function doAction(page, label, endpoint, expectedStatus = 200) {
+  const control = await page.getByRole('button', { name: label, exact: true }).elementHandle();
+  assert.ok(control, `Missing action: ${label}`);
   const response = page.waitForResponse(response => response.url() === origin + endpoint && response.request().method() === 'POST');
-  await page.getByRole('button', { name: label, exact: true }).click();
-  const result = await response;
-  assert.equal(result.status(), expectedStatus);
-  return result;
+  try {
+    await control.click();
+    const result = await response;
+    const error = result.status() === expectedStatus ? '' : (await result.json()).error || 'Unexpected API status';
+    assert.equal(result.status(), expectedStatus, `${label}: ${error}`);
+    // action() still refreshes the report after the HTTP response arrives.
+    // Observe the original control's finally block, including when refresh
+    // replaces that DOM node; do not type into a textarea about to be replaced.
+    await page.waitForFunction(control => control.disabled === false, control);
+    return result;
+  } finally { await control.dispose(); }
 }
 async function denied(page, id) {
   const denied = await page.request.get(`${origin}/api/reports/${id}`);
