@@ -28,3 +28,87 @@ jobs:
             python3 scripts/check_repository.py
             echo "Documentation foundation only; executable tests are in the feature branches."
           fi
+  browser-homologation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Install exact browser test dependency
+        run: npm install --prefix tests/browser --ignore-scripts --no-audit --no-fund
+      - name: Install real Chromium
+        working-directory: tests/browser
+        run: npx playwright-core install --with-deps chromium
+      - name: Exercise real loopback demo in Chromium
+        env:
+          CAPITAL_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/capital-browser
+        run: npm test --prefix tests/browser
+      - name: Retain synthetic screenshots and manifests
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 verified 2026-10-11
+        with:
+          name: synthetic-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/capital-browser
+          retention-days: 7
+          if-no-files-found: warn
+  supabase-homologation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CAPITAL_SUPABASE_STATUS_FILE: ${{ runner.temp }}/capital-supabase-status.json
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Install verified Supabase CLI release
+        run: |
+          mkdir -p "$RUNNER_TEMP/capital-cli"
+          curl --fail --location --silent --show-error --retry 2 --max-time 120 https://github.com/supabase/cli/releases/download/v2.120.0/supabase_2.120.0_linux_amd64.tar.gz -o "$RUNNER_TEMP/capital-cli/cli.tar.gz"
+          printf '%s  %s\n' '7074584113aa00495beeac661c41fb09f1ddd0a483cd7333894b0d080086dc6e' "$RUNNER_TEMP/capital-cli/cli.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/capital-cli/cli.tar.gz" -C "$RUNNER_TEMP/capital-cli" supabase
+          echo "$RUNNER_TEMP/capital-cli" >> "$GITHUB_PATH"
+      - name: Discover installed commands and generate isolated migrations
+        run: |
+          supabase --version
+          supabase --help
+          supabase init --help
+          supabase start --help
+          supabase status --help
+          supabase migration new --help
+          supabase stop --help
+          mkdir -p "$RUNNER_TEMP/capital-supabase"
+          cd "$RUNNER_TEMP/capital-supabase"
+          supabase init
+          supabase migration new capital_advisory_foundation
+          cp "$GITHUB_WORKSPACE/supabase/migrations/0001_advisory.sql" supabase/migrations/*_capital_advisory_foundation.sql
+          supabase migration new human_workflow
+          cp "$GITHUB_WORKSPACE/supabase/migrations/0002_human_workflow.sql" supabase/migrations/*_human_workflow.sql
+      - name: Start full disposable Auth PostgREST Storage database
+        run: |
+          umask 077
+          cd "$RUNNER_TEMP/capital-supabase"
+          if ! supabase start > "$RUNNER_TEMP/capital-supabase-start.log" 2>&1; then
+            echo 'Disposable Supabase startup failed. Credentials and raw service logs are not uploaded.'
+            exit 1
+          fi
+          supabase status --output json > "$CAPITAL_SUPABASE_STATUS_FILE"
+          chmod 600 "$CAPITAL_SUPABASE_STATUS_FILE"
+      - name: Execute rollback SQL authorization suites
+        run: python3 scripts/run_supabase_sql.py
+      - name: Exercise actual Auth PostgREST and private Storage
+        run: node tests/integration/supabase_e2e.mjs
+      - name: Stop disposable stack and remove credentials
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/capital-supabase/supabase"; then
+            cd "$RUNNER_TEMP/capital-supabase"
+            supabase stop --no-backup > "$RUNNER_TEMP/capital-supabase-stop.log" 2>&1 || true
+          fi
+          rm -f "$CAPITAL_SUPABASE_STATUS_FILE" "$RUNNER_TEMP/capital-supabase-start.log" "$RUNNER_TEMP/capital-supabase-stop.log"

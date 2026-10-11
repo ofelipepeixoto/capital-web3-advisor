@@ -56,7 +56,9 @@ MCP expõe capacidades autorizadas, sem substituir a API de domínio.
 
 O protótipo implementa apenas o ciclo de casos, relatórios e entrega e os
 cálculos essenciais. Consentimento persistente, dados financeiros coletados,
-jobs duráveis e fontes reais seguem no backlog. Uma lista de entidades não
+fontes reais seguem no backlog. Budget e jobs SQLite duráveis foram adicionados
+para ensaios locais; não estão conectados à OpenAI nem a uma instância n8n.
+Uma lista de entidades não
 equivale à implementação completa de todas elas.
 
 ## Decisões iniciais
@@ -70,8 +72,9 @@ equivale à implementação completa de todas elas.
   OpenAI elaborará a linguagem de um rascunho após validação/budget persistente.
 - **MCP stdio primeiro:** útil para ensaiar contratos. MCP remoto exige OAuth,
   audience, scopes, transporte e interoperabilidade comprovados.
-- **Supabase fora do teste local:** SQL/RLS preparado e revisável. A memória
-  Python não comprova as políticas Postgres ou a identidade Supabase.
+- **Supabase descartável separado:** a CI gera migrações com a CLI e executa
+  SQL, Auth, PostgREST e Storage com fixtures sintéticas. A API Edge reutiliza
+  o JWT verificado sob RLS. Deploy da Edge e Auth de produção são gates próprios.
 
 ## Material de referência
 

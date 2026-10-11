@@ -1,7 +1,9 @@
 # Preparação de staging: Sites, Supabase, OpenAI, n8n e Hostinger
 
-Nenhuma infraestrutura foi provisionada nesta entrega. Esta é uma sequência
-executável de implementação e homologação, sem contratar ou modificar serviços.
+Nenhum projeto Supabase na nuvem foi provisionado. A etapa de homologação usa
+um stack Supabase descartável na CI, API com JWT do usuário e Chromium contra
+a demonstração local. Consulte [evidências e gates](homologation.md).
+Esta sequência descreve os gates restantes, sem contratar serviços.
 
 ## Primeiro ambiente privado
 
@@ -10,7 +12,8 @@ executável de implementação e homologação, sem contratar ou modificar servi
 2. Substituir o servidor local por backend de produção; verificar assinatura,
    issuer, audience, expiração e revogação de sessão. Derivar subject/roles/case
    no servidor. Nunca usar headers de identidade enviados pelo navegador.
-3. Persistir revisão e publicação em transações; clients não escrevem reviews.
+3. Aplicar e verificar RPCs de revisão/publicação persistentes por versão/hash;
+   clients não escrevem reviews. O SQL está em `0002_human_workflow.sql`.
 4. Sites: criar projeto privado com runtime/segredos reais verificados; portar
    interface e configurar origem/API. Autenticação do site não substitui ACL de
    objetos do backend. Nenhum segredo OpenAI/service-role no frontend.
