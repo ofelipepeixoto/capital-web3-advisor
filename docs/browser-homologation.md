@@ -34,7 +34,7 @@ Instalações usam o pacote oficial Microsoft `playwright-core` na versão
 fixa 1.62.1. Os binários são obtidos pelo instalador oficial Playwright.
 
 ```sh
-npm install --prefix tests/browser --ignore-scripts
+npm ci --prefix tests/browser --ignore-scripts
 cd tests/browser
 npx playwright-core install --with-deps chromium
 cd ../..
@@ -103,11 +103,21 @@ testes falham contra a versão anterior, reproduzindo a identidade Rui aplicada
 enquanto a entrada como cliente B estava em andamento. Essa regressão executada
 é evidência de lógica JavaScript, sem equivaler a homologação visual.
 
-A instalação local offline também não conseguiu gerar um lockfile porque
-o cache não contém os metadados da versão fixa. Portanto o pacote está
-fixado por versão, mas um lockfile com integridade verificável ainda precisa
-ser obtido em ambiente com acesso ao registro npm oficial. Não foi criada
-uma integridade inventada.
+### Execução final após correções
+
+[CI 38108703715](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38108703715/job/114379564104)
+executou cinco cenários aprovados, zero falhas/skips, incluindo preservação de
+texto/foco durante refresh de receipt. Head `dd0b539de4ef037ee5a3953ec5171bb0f195049f`;
+merge de teste `12e530f792efec458d826fdca45580513b7675ae`.
+Chromium 151.0.7922.34, Node 24.21.0. Cinco manifests confirmaram zero erros JS
+e chamadas externas; 20 PNGs foram produzidos e o layout desktop/mobile revisado.
+O [registro central](homologation.md) mantém o digest do artifact verificado.
+
+O lock npm foi obtido nessa CI e validado: único pacote `playwright-core` 1.62.1,
+registro oficial npm e integridade SHA-512. Foi incorporado em
+`tests/browser/package-lock.json`; usar `npm ci --prefix tests/browser --ignore-scripts`.
+A instalação offline inicial não forneceu essa integridade; nenhum valor foi
+inventado. O portal com Auth hospedado continua sendo um gate separado.
 
 ## Fontes técnicas oficiais
 

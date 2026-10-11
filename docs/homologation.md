@@ -46,8 +46,46 @@ schema temporário. O Chromium executou 4/5 cenários; o helper aguardava apenas
 HTTP, antes de terminar o refresh da UI. Foi corrigido para aguardar a ação.
 Essas falhas não foram contabilizadas como homologação aprovada.
 
-Resultados finais, commit e links da execução após correções serão registrados
-após a CI.
+**Resultado final: aprovado no ambiente descartável.**
+[CI 38108703715](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38108703715),
+concluída em 2026-10-11 às 03:34:07 UTC, com todos os três jobs aprovados.
+Source head: `dd0b539de4ef037ee5a3953ec5171bb0f195049f`.
+Merge sintético efetivamente testado no PR:
+`12e530f792efec458d826fdca45580513b7675ae`.
+Esse merge de teste não é um merge na branch principal nem aprovação humana.
+
+| Evidência executada | Resultado |
+|---|---|
+| Python | 83 testes aprovados |
+| JS DOM | 7 cenários aprovados |
+| Contratos da API, upstream simulado | 31 testes aprovados |
+| Autorização SQL | 49 verificações aprovadas |
+| Workflow humano SQL | 53 verificações aprovadas |
+| Auth/PostgREST/Storage, serviços reais descartáveis | 33 verificações aprovadas |
+| Chromium, servidor Python real com personas sintéticas | 5 cenários aprovados; zero falhas/skips |
+
+O runner HTTP criou cinco usuários fictícios no Auth, fez login real, rejeitou
+JWT adulterado, chamou o handler com JWT de usuário e leu tabelas/RPCs sob RLS.
+Storage recebeu bytes reais de JSON sintético: acesso antes da publicação e por
+outro cliente foi negado; destinatário recebeu os bytes registrados; novas
+leituras foram negadas após revogação. INSERT direto de recibo foi negado.
+
+Chromium 151.0.7922.34 e Node 24.21.0 executaram desktop/mobile, download,
+receipt, esclarecimento, revogação e respostas de sessão atrasadas. O texto da
+dúvida e seu foco sobreviveram ao refresh de receipt; nova edição durante envio
+permaneceu no harness DOM. Cinco manifests registraram zero erros JS e zero
+chamadas da aplicação a origens externas. Capturas desktop/mobile inspecionadas.
+
+Artifact `11690975768`: 20 PNGs, cinco manifests e lock npm; 2.299.573 bytes.
+SHA-256 do ZIP verificado após download:
+`3183c35774cf1aeb2c808643ab21ec4256a7c1597cdb58b3de9062b1ec32ebc5`.
+A retenção do artifact é de sete dias; o resumo público não depende do ZIP.
+O lock de `playwright-core` foi gerado pelo npm na CI e incorporado ao Git,
+sem inventar integridade; futuras instalações usam `npm ci`.
+
+Após essa execução, o fechamento alterou apenas documentação/evidências.
+O workflow ignora mudanças somente em `docs/**` e `README.md`; código/runtime
+permanece vinculado ao source head validado acima.
 Uma suite preparada ou um teste com mock não satisfaz o gate de execução real.
 
 ## Gates restantes antes de clientes reais

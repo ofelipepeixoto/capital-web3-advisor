@@ -4,7 +4,8 @@ Base pública de desenvolvimento para a **ferramenta interna de consultoria da
 Capital Web3**, com um **portal privado de entrega de diagnósticos** aos clientes.
 O cliente recebe a análise revisada e escolhe o que implementar.
 
-**Estado: candidato à homologação técnica, com dados inteiramente fictícios.**
+**Estado: homologação técnica descartável aprovada, com dados inteiramente fictícios.**
+O piloto privado na nuvem permanece pendente dos gates de implantação.
 Não recebe fundos, assina transações ou opera posições. Nenhum cliente, documento
 privado do anexo ou segredo foi publicado. A visibilidade pública deste código
 não torna públicos os futuros diagnósticos.
@@ -87,6 +88,9 @@ dos gates descritos nos documentos.
 | [#2](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/2) | Console e portal local | feat/risk-engine |
 | [#3](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/3) | MCP e n8n | feat/private-advisory-demo |
 | [#4](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/4) | Fundação Supabase | feat/integration-contracts |
+| [#5](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/5) | RPCs humanos e API autenticada | feat/supabase-foundation |
+| [#6](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/6) | Budget, jobs e replay | feat/authenticated-human-workflow |
+| [#7](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/7) | CI real, correções do portal e evidências | feat/durable-budgets-jobs |
 
 As novas camadas de homologação seguem os quatro PRs iniciais:
 `feat/authenticated-human-workflow` → `feat/durable-budgets-jobs` →

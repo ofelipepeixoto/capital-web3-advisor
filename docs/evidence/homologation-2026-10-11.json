@@ -1,0 +1,39 @@
+{
+  "date_utc": "2026-10-11",
+  "scope": "Synthetic disposable technical validation; private cloud pilot pending",
+  "source_head_sha": "dd0b539de4ef037ee5a3953ec5171bb0f195049f",
+  "tested_pr_merge_sha": "12e530f792efec458d826fdca45580513b7675ae",
+  "run_id": 38108703715,
+  "ci_url": "https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38108703715",
+  "ci_conclusion": "success",
+  "tests": {
+    "python": 83,
+    "dom_scenarios": 7,
+    "api_contracts_mock_upstream": 31,
+    "sql_authorization": 49,
+    "sql_human_workflow": 53,
+    "real_local_auth_postgrest_storage": 33,
+    "chromium_e2e": 5
+  },
+  "browser": {
+    "node": "24.21.0",
+    "chromium": "151.0.7922.34",
+    "failed": 0,
+    "skipped": 0,
+    "page_errors": 0,
+    "application_external_requests": 0
+  },
+  "artifact": {
+    "id": 11690975768,
+    "size_bytes": 2299573,
+    "sha256": "3183c35774cf1aeb2c808643ab21ec4256a7c1597cdb58b3de9062b1ec32ebc5",
+    "synthetic_pngs": 20,
+    "manifests": 5,
+    "retention_days": 7
+  },
+  "cloud_project_modified": false,
+  "paid_openai_calls": 0,
+  "financial_execution": false,
+  "human_merge_review": "pending",
+  "production_release": "pending_gates"
+}
