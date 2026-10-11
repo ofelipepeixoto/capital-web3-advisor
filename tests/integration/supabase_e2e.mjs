@@ -10,8 +10,9 @@ import { createHandler } from "../../supabase/functions/advisory-api/index.ts";
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SHA = /^[a-f0-9]{64}$/;
 let assertions = 0;
+class SafeTestFailure extends Error {}
 function requireCondition(condition, label) {
-  if (!condition) throw new Error(label);
+  if (!condition) throw new SafeTestFailure(label);
 }
 function pass(label, condition) {
   requireCondition(condition, label);
@@ -30,13 +31,13 @@ function loadStatus() {
     "local status file must be private and bounded");
   let status;
   try { status = JSON.parse(readFileSync(file, "utf8")); }
-  catch { throw new Error("invalid local status JSON"); }
+  catch { throw new SafeTestFailure("invalid local status JSON"); }
   requireCondition(status && status.API_URL === "http://127.0.0.1:54321", "only the fixed local API endpoint is allowed");
   requireCondition(typeof status.ANON_KEY === "string" && status.ANON_KEY.length > 20 &&
     typeof status.SERVICE_ROLE_KEY === "string" && status.SERVICE_ROLE_KEY.length > 20,
     "local CLI API keys are required");
   let database;
-  try { database = new URL(status.DB_URL); } catch { throw new Error("invalid local database configuration"); }
+  try { database = new URL(status.DB_URL); } catch { throw new SafeTestFailure("invalid local database configuration"); }
   requireCondition(["postgres:", "postgresql:"].includes(database.protocol) &&
     database.hostname === "127.0.0.1" && database.port === "54322" &&
     database.pathname === "/postgres" && database.username === "postgres" &&
@@ -51,10 +52,10 @@ async function main() {
   const fetchLocal = async (path, init = {}) => {
     requireCondition(/^\/(auth|rest|storage)\/v1\//.test(path), "unknown local endpoint");
     try { return await fetch(base + path, { ...init, redirect: "error", signal: AbortSignal.timeout(15000) }); }
-    catch { throw new Error("local upstream unavailable"); }
+    catch { throw new SafeTestFailure("local upstream unavailable"); }
   };
   const parsed = async (response) => {
-    try { return await response.json(); } catch { throw new Error("local upstream returned invalid JSON"); }
+    try { return await response.json(); } catch { throw new SafeTestFailure("local upstream returned invalid JSON"); }
   };
   const adminHeaders = { apikey: status.SERVICE_ROLE_KEY,
     Authorization: "Bearer " + status.SERVICE_ROLE_KEY, "Content-Type": "application/json" };
@@ -108,7 +109,8 @@ insert into public.advisory_report_versions(id,report_id,case_id,version_number,
 ('${ids.versionB1}','${ids.reportB}','${ids.caseB}',1,'{"title":"Synthetic diagnosis B v1","status":"draft"}','${users.authorB.id}');
 insert into public.advisory_report_assets(id,report_version_id,case_id,bucket_id,object_name,bytes_sha256,mime_type) values
 ('${ids.asset}','${ids.versionA1}','${ids.caseA}','capital-web3-advisory','${objectName}','${bytesDigest}','application/json');
-commit;`;
+commit;
+notify pgrst,'reload schema';`;
   const db = status.database;
   const seeded = spawnSync("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1"], {
     input: fixtureSql, encoding: "utf8", timeout: 30000,
@@ -238,8 +240,9 @@ commit;`;
   console.log("Edge deployment, cloud staging and production approval remain unvalidated.");
 }
 
-main().catch(() => {
+main().catch((error) => {
   // Provider bodies, credentials, SQL text, user IDs and JWTs must never enter CI output.
-  console.error("FAIL real Supabase local homologation; last PASS identifies the completed gate.");
+  const safeMessage = error instanceof SafeTestFailure ? error.message : "runner initialization or native operation failed";
+  console.error("FAIL real Supabase local homologation: " + safeMessage + "; last PASS identifies the completed gate.");
   process.exitCode = 1;
 });

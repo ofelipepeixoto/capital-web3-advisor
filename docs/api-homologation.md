@@ -123,6 +123,28 @@ Deno não a passa; nenhuma variável ou request ativa essa exceção no deploy.
 A integração real usa Auth/PostgREST/Storage do Supabase local em Docker e
 usuários fictícios, conforme roteiro e CI de homologação do projeto.
 
+Depois de iniciar uma stack descartável e aplicar as migrações, executar:
+
+```sh
+CAPITAL_SUPABASE_STATUS_FILE=/caminho/privado/status.json node tests/integration/supabase_e2e.mjs
+```
+
+O status JSON vem do Supabase CLI, precisa de modo `0600` e contém `API_URL`,
+`ANON_KEY`, `SERVICE_ROLE_KEY` e `DB_URL`. Ele é temporário e nunca deve virar
+commit, log ou artifact de CI. O runner aceita somente API `127.0.0.1:54321` e
+Postgres `127.0.0.1:54322`, cria cinco contas confirmadas e senhas aleatórias em
+memória, sem enviar emails, e grava fixtures exclusivamente fictícias. Chave
+administrativa serve somente ao bootstrap de usuários/blob; as decisões usam
+JWTs dos usuários e os RPCs controlados. Destruir a stack descartável ao final.
+
+As 33 asserções desse runner incluem assinatura JWT adulterada, self-review,
+hash de manifesto antigo, publicação idempotente, INSERT direto de receipt
+proibido, versão não publicada, isolamento entre casos, bytes exatos do Storage
+e revogação de leitura/download/receipt. O handler TypeScript executa em Node
+com `fetch` real para esses serviços; isso **não testa o deploy Edge Deno**.
+Consultar a execução CI para o resultado efetivamente observado, sem presumir
+sucesso apenas pela presença do runner.
+
 ## O que falta para produção
 
 Este handler não inclui MFA, controle persistente de sessão do produto,

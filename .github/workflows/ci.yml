@@ -58,8 +58,6 @@ jobs:
   supabase-homologation:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      CAPITAL_SUPABASE_STATUS_FILE: ${{ runner.temp }}/capital-supabase-status.json
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -98,8 +96,10 @@ jobs:
             echo 'Disposable Supabase startup failed. Credentials and raw service logs are not uploaded.'
             exit 1
           fi
-          supabase status --output json > "$CAPITAL_SUPABASE_STATUS_FILE"
-          chmod 600 "$CAPITAL_SUPABASE_STATUS_FILE"
+          status_file="$RUNNER_TEMP/capital-supabase-status.json"
+          supabase status --output json > "$status_file"
+          chmod 600 "$status_file"
+          echo "CAPITAL_SUPABASE_STATUS_FILE=$status_file" >> "$GITHUB_ENV"
       - name: Execute rollback SQL authorization suites
         run: python3 scripts/run_supabase_sql.py
       - name: Exercise actual Auth PostgREST and private Storage
@@ -111,4 +111,4 @@ jobs:
             cd "$RUNNER_TEMP/capital-supabase"
             supabase stop --no-backup > "$RUNNER_TEMP/capital-supabase-stop.log" 2>&1 || true
           fi
-          rm -f "$CAPITAL_SUPABASE_STATUS_FILE" "$RUNNER_TEMP/capital-supabase-start.log" "$RUNNER_TEMP/capital-supabase-stop.log"
+          rm -f "$RUNNER_TEMP/capital-supabase-status.json" "$RUNNER_TEMP/capital-supabase-start.log" "$RUNNER_TEMP/capital-supabase-stop.log"
