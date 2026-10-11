@@ -79,7 +79,7 @@ async function main() {
     const session = await parsed(login);
     requireCondition(typeof session.access_token === "string" && session.user?.id === id,
       "real Auth session did not match its synthetic account");
-    users[role] = { id, token: session.access_token };
+    users[role] = { id, token: session.access_token, email, password };
   }
   pass("real Auth login for five synthetic accounts", Object.keys(users).length === 5);
 
@@ -91,23 +91,23 @@ async function main() {
   // UUIDs come from the Auth server or crypto; strings below are controlled constants.
   // SQL is passed through stdin. Database credentials are environment-only and never logged.
   const fixtureSql = `begin;
-insert into public.advisory_cases(id,client_safe_title,created_by) values
+insert into capital_web3.advisory_cases(id,client_safe_title,created_by) values
 ('${ids.caseA}','Synthetic case A','${users.ana.id}'),
 ('${ids.caseB}','Synthetic case B','${users.authorB.id}');
-insert into public.advisory_case_staff(case_id,user_id,staff_role) values
+insert into capital_web3.advisory_case_staff(case_id,user_id,staff_role) values
 ('${ids.caseA}','${users.ana.id}','analyst'),('${ids.caseA}','${users.ana.id}','admin'),
 ('${ids.caseA}','${users.rui.id}','reviewer'),('${ids.caseA}','${users.rui.id}','publisher'),
 ('${ids.caseB}','${users.authorB.id}','analyst');
-insert into public.advisory_case_clients(case_id,user_id) values
+insert into capital_web3.advisory_case_clients(case_id,user_id) values
 ('${ids.caseA}','${users.clientA.id}'),('${ids.caseB}','${users.clientB.id}');
-insert into public.advisory_reports(id,case_id,created_by) values
+insert into capital_web3.advisory_reports(id,case_id,created_by) values
 ('${ids.reportA}','${ids.caseA}','${users.ana.id}'),
 ('${ids.reportB}','${ids.caseB}','${users.authorB.id}');
-insert into public.advisory_report_versions(id,report_id,case_id,version_number,content,created_by) values
+insert into capital_web3.advisory_report_versions(id,report_id,case_id,version_number,content,created_by) values
 ('${ids.versionA1}','${ids.reportA}','${ids.caseA}',1,'{"title":"Synthetic diagnosis A v1","status":"draft"}','${users.ana.id}'),
 ('${ids.versionA2}','${ids.reportA}','${ids.caseA}',2,'{"title":"Synthetic diagnosis A v2 unpublished","status":"draft"}','${users.ana.id}'),
 ('${ids.versionB1}','${ids.reportB}','${ids.caseB}',1,'{"title":"Synthetic diagnosis B v1","status":"draft"}','${users.authorB.id}');
-insert into public.advisory_report_assets(id,report_version_id,case_id,bucket_id,object_name,bytes_sha256,mime_type) values
+insert into capital_web3.advisory_report_assets(id,report_version_id,case_id,bucket_id,object_name,bytes_sha256,mime_type) values
 ('${ids.asset}','${ids.versionA1}','${ids.caseA}','capital-web3-advisory','${objectName}','${bytesDigest}','application/json');
 commit;
 notify pgrst,'reload schema';`;
@@ -207,7 +207,7 @@ notify pgrst,'reload schema';`;
   const actualBytes = Buffer.from(await storageA.arrayBuffer());
   pass("recipient receives exact reviewed Storage bytes", createHash("sha256").update(actualBytes).digest("hex") === bytesDigest);
   const directReceipt = await fetchLocal("/rest/v1/advisory_receipts", {
-    method: "POST", headers: { apikey: status.ANON_KEY, Authorization: "Bearer " + users.clientA.token,
+    method: "POST", headers: { apikey: status.ANON_KEY, Authorization: "Bearer " + users.clientA.token, "Content-Profile": "capital_web3",
       "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify({ publication_id: publication, case_id: ids.caseA,
       report_version_id: ids.versionA1, user_id: users.clientA.id }),
@@ -237,6 +237,11 @@ notify pgrst,'reload schema';`;
   const afterRevoke = await result("clientA", "/reports");
   pass("revoked versions disappear from client list", afterRevoke.status === 200 && afterRevoke.body.data.length === 0);
   console.log("REAL SUPABASE LOCAL: " + assertions + " assertions passed; Auth/PostgREST/Storage exercised.");
+  if (process.env.CAPITAL_STAGING_BROWSER === '1') {
+    const { runStagingBrowser } = await import('../browser/staging_supabase.mjs');
+    try { await runStagingBrowser({ status, users, ids, handler, origin }); }
+    catch (error) { throw new SafeTestFailure(error.message); }
+  }
   console.log("Edge deployment, cloud staging and production approval remain unvalidated.");
 }
 

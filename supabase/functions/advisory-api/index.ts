@@ -206,7 +206,12 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
           return await upstreamFetch(config!.base + pathname, {
             ...init, redirect: "error", signal: AbortSignal.timeout(8000),
             headers: { "apikey": config!.key, "Authorization": authorization,
-              "Content-Type": "application/json", "Accept": "application/json" },
+              "Content-Type": "application/json", "Accept": "application/json",
+              // Profile is fixed by the server. Auth/Storage never receive a DB profile.
+              ...(pathname.startsWith("/rest/v1/") ? {
+                "Accept-Profile": "capital_web3", "Content-Profile": "capital_web3",
+              } : {}),
+            },
           });
         } catch { throw new ApiError(503, "upstream_unavailable"); }
       };
@@ -243,6 +248,13 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
       }
       if (request.method === "GET" && path === "/cases") {
         return respond(200, { data: await database("/rest/v1/advisory_cases?select=id,client_safe_title&order=created_at.desc&limit=100"), request_id: requestId });
+      }
+      const recipientsRoute = path.match(/^\/cases\/([^/]+)\/recipients$/);
+      if (request.method === "GET" && recipientsRoute) {
+        const caseId = assertUuid(recipientsRoute[1]);
+        // Staff obtain the eligible recipients from RLS-protected membership rows.
+        // A client can see only its own membership, never other client identities.
+        return respond(200, { data: await database("/rest/v1/advisory_case_clients?select=user_id&active=eq.true&case_id=eq." + caseId + "&limit=50"), request_id: requestId });
       }
       if (request.method === "GET" && path === "/reports") {
         return respond(200, { data: await database("/rest/v1/advisory_report_versions?select=id,report_id,case_id,version_number,content_sha256,created_at&order=created_at.desc&limit=100"), request_id: requestId });

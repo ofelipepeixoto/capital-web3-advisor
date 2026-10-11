@@ -1,0 +1,53 @@
+{
+  "date_utc": "2026-10-11",
+  "status": "disposable_homologation_passed_cloud_pending",
+  "pull_request": "https://github.com/ofelipepeixoto/capital-web3-advisor/pull/10",
+  "tested_source_commit": "e17201b0a2e36939105d7c5e27f4b09456827f30",
+  "workflow_run": "https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38157591368",
+  "workflow_conclusion": "success",
+  "checks": {
+    "python_tests": 83,
+    "dom_scenarios": 16,
+    "api_contract_tests": 33,
+    "portal_transport_tests": 12,
+    "sql_assertions": 102,
+    "real_supabase_http_assertions": 33,
+    "demo_chromium_scenarios": 8,
+    "authenticated_portal_chromium_assertions": 13
+  },
+  "chromium": "151.0.7922.34",
+  "authenticated_browser_checks": [
+    "asset manifest alone cannot enable publication",
+    "explicit review acknowledgement required",
+    "no preselected recipients",
+    "review and publication persist through authenticated RPCs",
+    "client has no approval control",
+    "password cleared after sign in",
+    "no persistent browser tokens",
+    "mobile page fits viewport",
+    "download contains authorized version",
+    "client receipt persisted through RPC",
+    "foreign client sees no diagnosis",
+    "revocation refresh clears rendered diagnosis",
+    "reload cannot restore previous session"
+  ],
+  "artifact": {
+    "id": 11709411503,
+    "name": "synthetic-staging-38157591368",
+    "sha256": "3b6504a511ae06d3987d0276d440c2756c9e1fe892ca9343c266aa2b89a1c4b6",
+    "download_digest_verified": true,
+    "retention_days": 7,
+    "images_inspected": ["staging-client-mobile.png", "staging-reviewer-desktop.png"],
+    "additional_image": "staging-client-signed-out.png"
+  },
+  "transport_limit": "Chromium routes the Edge API to the actual Node handler; Auth, PostgREST, RLS and Storage are real and disposable. Deno Edge and hosted gateway are not deployed.",
+  "remaining_gates": [
+    "Dedicated Supabase project and verified creation cost",
+    "Cloud Edge deployment and private hosting",
+    "MFA, strict server-side session revocation, invitations and recovery",
+    "Attachment byte inspection before portal approval",
+    "Paid OpenAI budget and protected project configuration",
+    "Live n8n, remote MCP and Sites/Hostinger deployment",
+    "Human review and real client pilot authorization"
+  ]
+}
