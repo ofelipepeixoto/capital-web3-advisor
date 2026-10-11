@@ -63,6 +63,11 @@ implementação e revisão explícita, com:
 - Chave no backend, menor privilégio, retenção documentada e logs sem segredos.
 - Schema/validação no servidor, handling de falhas e revisão humana real.
 
+Os módulos `capital_web3/budget.py` e `jobs.py` agora fornecem reserva atômica,
+reconciliação e fila SQLite para ensaios locais. [Budget e jobs](budget-jobs.md)
+descreve garantias e limites. Não estão conectados ao adapter pago, ao backend
+Supabase ou ao n8n; a autorização comercial de consumo continua pendente.
+
 `store=false` não implica Zero Data Retention. Políticas e controles contratados
 do provedor precisam de verificação separada. Não conectar MCPs novos ou enviar
 contexto de cliente a terceiros somente porque um documento sugeriu fazê-lo.
@@ -130,15 +135,15 @@ HTTP Request, OpenAI, RPC, scheduler, shell, e-mail ou notificação.
 Esses previews servem para discutir inputs de portfólio, LP, diligência e
 incidentes. Não constituem a implementação dos cinco fluxos operacionais de
 produção abaixo. LP/diligência/incidente são contextos complementares de análise;
-a coordenação de jobs, estados e falhas permanece pendente.
+a coordenação desses workflows com a fila local e serviços externos permanece pendente.
 
 | Fluxo operacional alvo | Preparação exigida para produção | Estado desta entrega |
 | --- | --- | --- |
-| **Importação de evidências (import)** | Origem autorizada, consentimento, sanitização, atribuição ao caso e idempotência de ingestão | Nenhuma ingestão externa ou job persistente implementado. |
+| **Importação de evidências (import)** | Origem autorizada, consentimento, sanitização, atribuição ao caso e idempotência de ingestão | Fila local disponível; ingestão externa não conectada. |
 | **Preparação de rascunho (draft)** | Dados validados → orçamento reservado → cálculo/adapter → contrato fechado → rascunho do caso | Adapter mock e contrato local; previews não chamam o backend. |
 | **Monitoramento assistido (monitor)** | Scheduler consentido, fontes e thresholds aprovados, limite de custo e aviso interno ao consultor | Sem scheduler, fonte live ou alertas recorrentes. |
 | **Entrega após revisão (delivery)** | Revisor autenticado → aprovação vinculada à versão/hash → destinatários autorizados → publicação no portal | Serviço local de domínio; node n8n é somente placeholder. |
-| **Tratamento de falhas (failures)** | Estado durável, retries limitados, deduplicação, interrupção e encaminhamento interno | Erros locais fail-closed; nenhuma fila ou recuperação n8n implantada. |
+| **Tratamento de falhas (failures)** | Estado durável, retries limitados, deduplicação, interrupção e encaminhamento interno | Fila SQLite com leases/retries; recuperação em instância n8n não implantada. |
 
 As cinco fases exigem contratos e validação de autorização no backend. Não
 substituir a operação de domínio por flags em um payload, nem implementar esses

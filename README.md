@@ -4,21 +4,22 @@ Base pública de desenvolvimento para a **ferramenta interna de consultoria da
 Capital Web3**, com um **portal privado de entrega de diagnósticos** aos clientes.
 O cliente recebe a análise revisada e escolhe o que implementar.
 
-**Estado: ambiente local de testes, com dados inteiramente fictícios.**
+**Estado: homologação técnica descartável aprovada, com dados inteiramente fictícios.**
+O piloto privado na nuvem permanece pendente dos gates de implantação.
 Não recebe fundos, assina transações ou opera posições. Nenhum cliente, documento
 privado do anexo ou segredo foi publicado. A visibilidade pública deste código
 não torna públicos os futuros diagnósticos.
 
 ## Testar
 
-Python 3.11 ou superior; Node.js 18+ para o teste de transição da interface.
+Python 3.11 ou superior; Node.js 24 para transições da interface e contratos da API.
 Sem pacotes externos para a demonstração ou estes testes.
 
 ```sh
 git clone https://github.com/ofelipepeixoto/capital-web3-advisor.git
 cd capital-web3-advisor
 # Durante a revisão inicial, a implementação completa está nesta branch:
-git checkout feat/supabase-foundation
+git checkout feat/homologation-evidence
 make check
 make demo
 ```
@@ -50,7 +51,8 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | `capital_web3/server.py`, `apps/web/` | API local e console/portal de demonstração |
 | `capital_web3/adapters.py`, `contracts/` | Relatório fictício e contratos; OpenAI real bloqueada |
 | `capital_web3/mcp.py` | Exemplo MCP local por stdio, com ferramentas de leitura |
-| `supabase/` | Migração RLS e testes SQL propostos para staging |
+| `supabase/` | RLS, workflow humano persistente e API Edge autenticada |
+| `capital_web3/budget.py`, `capital_web3/jobs.py` | Reservas/fila SQLite e webhooks assinados; adapters externos desligados |
 | `n8n/workflows/` | Templates inativos sem credenciais |
 | `tests/`, `.github/workflows/` | Testes de comportamento e CI |
 | `docs/` | Arquitetura, escopo, etapas, integração e evidências |
@@ -63,7 +65,7 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | Cálculos/API/portal local | Implementados; verificar `docs/testing.md` para resultados |
 | OpenAI API | Adapter fictício; consumo pago desativado |
 | MCP | Exemplo local de protocolo; não é servidor remoto homologado |
-| Supabase | SQL e testes preparados; nenhum projeto/banco remoto alterado |
+| Supabase | Homologação descartável na CI; nenhum projeto/banco na nuvem alterado |
 | n8n | JSONs inativos; importação/execução na instância ainda não realizada |
 | Sites | Interface reaproveitável e roteiro; nenhum Site publicado |
 | Hostinger | Roteiro de staging; nenhum serviço/VPS alterado |
@@ -72,9 +74,10 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 
 Esta estrutura deriva do plano fornecido **v1.2**, adaptado ao escopo público.
 Leia [arquitetura](docs/architecture.md), [backlog](docs/backlog.md),
-[staging](docs/staging.md) e [testes](docs/testing.md).
+[staging](docs/staging.md), [testes](docs/testing.md) e
+[homologação técnica e gates](docs/homologation.md).
 Começamos por uma fatia executável de revisão e entrega. Integrações financeiras
-reais, autenticação de produção, automações persistentes e monitoramento dependem
+reais, autenticação de produção, conexão das automações e monitoramento dependem
 dos gates descritos nos documentos.
 
 ### Implementação para revisão
@@ -85,10 +88,15 @@ dos gates descritos nos documentos.
 | [#2](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/2) | Console e portal local | feat/risk-engine |
 | [#3](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/3) | MCP e n8n | feat/private-advisory-demo |
 | [#4](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/4) | Fundação Supabase | feat/integration-contracts |
+| [#5](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/5) | RPCs humanos e API autenticada | feat/supabase-foundation |
+| [#6](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/6) | Budget, jobs e replay | feat/authenticated-human-workflow |
+| [#7](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/7) | CI real, correções do portal e evidências | feat/durable-budgets-jobs |
 
-Revisar em ordem 1 → 2 → 3 → 4. As branches têm dependências explícitas;
-nenhuma stack nativa foi presumida. A branch **feat/supabase-foundation** contém
-o projeto completo para testes. Nenhum PR foi mesclado; revisão humana pendente.
+As novas camadas de homologação seguem os quatro PRs iniciais:
+`feat/authenticated-human-workflow` → `feat/durable-budgets-jobs` →
+`feat/homologation-evidence`. A última contém o candidato completo para testes.
+As branches têm dependências explícitas. Nenhum PR foi mesclado;
+revisão humana pendente. Consulte o registro de CI em `docs/homologation.md`.
 
 ## Direitos
 

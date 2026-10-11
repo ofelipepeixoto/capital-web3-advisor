@@ -1,0 +1,12 @@
+{
+  "name": "capital-web3-browser-homologation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chromium E2E for the synthetic loopback-only advisory demo",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 advisory.test.cjs",
+    "list": "node advisory.test.cjs --list"
+  },
+  "engines": { "node": ">=20" },
+  "devDependencies": { "playwright-core": "1.62.1" }
+}

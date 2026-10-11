@@ -1,8 +1,13 @@
-# Backend Supabase futuro — gate de implantação
+# Backend Supabase — fundação, workflow humano e gate de implantação
 
-Esta especificação prepara uma migração e testes para um ambiente **futuro e isolado**. Nenhum projeto, banco, bucket remoto, conta, segredo, custo ou integração Supabase foi criado por estes arquivos. A API local de demonstração é independente e não comprova este backend.
+Esta especificação prepara migrações, RPCs e testes para um ambiente **isolado**.
+Nenhum projeto ou bucket na nuvem foi criado por estes arquivos. A homologação
+descartável da CI usa Auth, PostgREST e Storage reais com fixtures; a API Python
+local é independente desse backend.
 
-**Estado:** SQL revisado como código; teste de autorização real, Storage real, login e workflow humano ainda pendentes. Não usar a expressão “RLS validada” antes do gate abaixo.
+**Estado:** fonte e testes em revisão; resultados executados e gates restantes
+estão em [homologação](homologation.md). A API hospedada e o portal com Auth de
+produção permanecem pendentes. Não confundir claims SQL sintéticas com login.
 
 ## Modelo e fluxo
 
@@ -52,7 +57,13 @@ O schema `advisory_private` **não pode ser incluído nos exposed schemas** da D
 
 Os helpers precisam pertencer a uma role administrativa controlada com `BYPASSRLS` ou superuser. Ser proprietário da tabela isoladamente não contorna `FORCE ROW LEVEL SECURITY` e pode causar recursão das policies. A migração falha antes do DDL se a role instaladora não tem esse atributo; a suíte verifica os owners das funções. Validar acesso/owners no staging; não desativar RLS nem conceder bypass a usuários ou staff para solucionar falha de instalação.
 
-**Não há RPC para aprovar ou publicar.** As tabelas de workflow são contrato futuro, não endpoint operacional pronto. Antes de implementar escrita privilegiada, o backend deve verificar sessão humana, obter identidade de credencial verificada, conferir atribuição/papel, aplicar CSRF quando necessário, vincular aprovação ao digest e assets revisados, limitar custo/volume e fazer publicação + recipients atomicamente. Nunca aceitar `reviewer_user_id`, `publisher_user_id`, `revoked_by` ou `case_id` fornecidos pelo modelo como prova de autoridade.
+**Cinco RPCs de workflow foram adicionados em `0002_human_workflow.sql`.**
+Derivam identidade da sessão, verificam papéis atribuídos no banco e vinculam
+decisões aos digests observados; publicação + recipients são atômicos. O handler
+da Edge verifica o usuário no Auth e usa o mesmo JWT em PostgREST, sem service
+role. Consulte [API](api-homologation.md) e [segurança](security-homologation.md).
+Nunca aceitar `reviewer_user_id`, `publisher_user_id`, `revoked_by` ou `case_id`
+fornecidos pelo modelo como prova de autoridade. Recibos usam somente RPC.
 
 Uma `service_role`/secret key bypassa RLS. Consultar com ela e obter sucesso **não valida autorização de cliente**. Credenciais desse tipo permanecem só no servidor, com acesso restrito. Preferir uma role/workflow de backend de privilégio mínimo na implementação real. O administrador do banco continua capaz de desabilitar triggers ou alterar registros: este audit não é prova criptográfica contra o DBA. Antes de produção, avaliar retenção e cópia externa protegida contra adulteração.
 
