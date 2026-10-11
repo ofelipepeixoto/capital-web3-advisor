@@ -70,6 +70,24 @@ está em 127.0.0.1 e Auth na porta fixa 54321. O builder aceita apenas HTTPS.
 
 ## Verificação
 
+**Resultado em 11/10/2026:** CI
+[38157591368](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38157591368)
+aprovada no código `e17201b0a2e36939105d7c5e27f4b09456827f30`.
+83 testes Python, 16 cenários DOM, 33 contratos API, 12 testes de sessão,
+102 verificações SQL, 33 verificações HTTP reais e 8 cenários Chromium da demo
+passaram. O novo fluxo Chromium autenticado passou em 13 verificações, sem
+substituir Auth/banco por mocks. As três imagens sintéticas de desktop/celular
+foram inspecionadas; não houve overflow horizontal no cenário mobile.
+
+A primeira execução encontrou falha de entrada no navegador; a chamada de
+`fetch` como método do cliente foi corrigida para preservar a chamada nativa.
+Foi acrescentada uma regressão específica e o fluxo completo passou na nova CI.
+O teste não valida a aparência com diagnósticos longos ou clientes reais.
+
+Evidência durável resumida: [JSON](evidence/staging-portal-2026-10-11.json).
+As imagens completas e o manifesto estão no artefato
+`synthetic-staging-38157591368`, com retenção de sete dias no GitHub Actions.
+
 - `make check`: regressões Python/DOM/API e testes de sessão do novo transporte.
 - CI `supabase-homologation`: SQL/HTTP existentes mais Chromium com login real,
   revisão/publicação por RPC, cliente A/B, download, recebimento e revogação.
