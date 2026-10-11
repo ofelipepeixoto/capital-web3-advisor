@@ -8,19 +8,30 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="Capital Web3"><span class="brand-icon">C</span><span>CAPITAL <b>WEB3</b><small>CONSULTORIA & INTELIGÊNCIA</small></span></a>
     <div class="section-label">WORKSPACE PRIVADO</div>
     <nav aria-label="Seções"><button id="reports-tab" class="nav active">◈ Diagnósticos</button><button id="risk-tab" class="nav" hidden>▥ Laboratório de risco</button></nav>
     <div class="sidebar-note"><span class="dot"></span> Revisão humana<br><small>Cada entrega tem versão,<br>revisor e destinatário.</small></div>
-    <div class="identity"><span id="avatar" class="avatar">?</span><div><strong id="identity-name">Sem sessão</strong><small id="identity-role">Dados fictícios</small></div><button id="logout" class="icon-button" title="Encerrar sessão" hidden>↪</button></div>
+    <div class="identity"><span id="avatar" class="avatar">?</span><div><strong id="identity-name">Sem sessão</strong><small id="identity-role">Dados fictícios</small></div><button id="logout" class="icon-button" title="Encerrar sessão" aria-label="Encerrar sessão" hidden>↪</button></div>
   </aside>
-  <main>
+  <main id="main-content" tabindex="-1">
     <header class="topbar"><span>ADVISORY / <span id="breadcrumb">DIAGNÓSTICOS</span></span><span class="demo-badge">DEMO LOCAL · DADOS FICTÍCIOS</span></header>
     <section id="login-view" class="login-panel">
       <p class="eyebrow">CAPITAL WEB3 / AMBIENTE DE TESTES</p>
       <h1>Uma análise clara.<br>Uma decisão informada.</h1>
       <p class="intro">Prepare, revise e entregue diagnósticos de portfólio. Explore o fluxo com quatro identidades fictícias.</p>
+      <details class="demo-guide">
+        <summary>Roteiro para demonstrar o fluxo em 90 segundos</summary>
+        <p>Meta de demonstração com dados fictícios; o tempo não foi medido com usuários.</p>
+        <ol>
+          <li><strong>Ana:</strong> prepare um rascunho e confira os dados e limites. Use “Encerrar sessão” para trocar de papel.</li>
+          <li><strong>Rui:</strong> abra a mesma versão, revise e publique para o Cliente A.</li>
+          <li><strong>Cliente A:</strong> confira a versão recebida e envie uma dúvida sobre os dados ou limites.</li>
+        </ol>
+        <p>Resultado a validar: o cliente entende o que foi analisado, o que falta e qual dúvida levar ao consultor. Os registros desaparecem ao reiniciar o servidor.</p>
+      </details>
       <div class="persona-grid">
         <button class="persona" data-persona="ana"><span class="persona-avatar">A</span><b>Ana</b><span>Consultora</span><small>Preparar análises do caso A</small></button>
         <button class="persona" data-persona="rui"><span class="persona-avatar">R</span><b>Rui</b><span>Revisor</span><small>Aprovar e publicar o caso A</small></button>
