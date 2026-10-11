@@ -45,11 +45,11 @@ continua disponível. Não interpretar manifesto como arquivo efetivamente lido.
 
 ## Configuração e bundle
 
-Pré-requisitos: Supabase dedicado, Auth, migrações revisadas, API Edge implantada
+Pré-requisitos: namespaces Capital no Supabase Free compartilhado, Auth, migrações revisadas, API Edge implantada
 e origem HTTPS final. Definir no ambiente de build:
 
 - `CAPITAL_PORTAL_ORIGIN`: origem HTTPS exata da interface.
-- `CAPITAL_SUPABASE_URL`: URL HTTPS do projeto dedicado.
+- `CAPITAL_SUPABASE_URL`: URL HTTPS do projeto compartilhado autorizado.
 - `CAPITAL_SUPABASE_PUBLIC_KEY`: chave publishable ou anon legado.
 
 Executar `node scripts/build_staging.mjs`. Gera `dist/staging/public/` e
@@ -65,7 +65,7 @@ validadas. O hosting deve oferecer acesso privado adequado; este bundle não
 configura SSO ou proteção da página estática por conta própria.
 
 Desabilitar cadastro público no Auth para homologação; usar identidades fictícias.
-Não apontar para bancos de outros projetos. HTTP local só é aceito quando a página
+Usar somente o projeto compartilhado autorizado e os namespaces da Capital. HTTP local só é aceito quando a página
 está em 127.0.0.1 e Auth na porta fixa 54321. O builder aceita apenas HTTPS.
 
 ## Verificação
@@ -100,10 +100,11 @@ As imagens completas e o manifesto estão no artefato
 
 ## Dependências em 11/10/2026
 
-`get_cost` continua retornando UNAVAILABLE no conector Supabase. Não há projeto
-dedicado na conta consultada. Provisionamento depende de cotação/confirmação
-válida no provedor; os bancos existentes não foram alterados. OpenAI paga, n8n,
-MCP remoto, Sites e Hostinger dependem de configuração e homologação próprias.
+O titular escolheu a rota Free no projeto existente `radar-disruptivo`.
+A consulta de custo de um terceiro projeto deixou de ser bloqueio; nenhuma
+contratação é necessária. Ver [staging Free](free-shared-staging.md) para a
+adaptação, o procedimento e os limites. OpenAI paga, n8n, MCP remoto, Sites e
+Hostinger continuam dependendo de configuração e homologação próprias.
 Não há liberação para clientes reais.
 
 Fontes oficiais consultadas em 11/10/2026:

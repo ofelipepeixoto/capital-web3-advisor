@@ -7,8 +7,9 @@ Esta sequência descreve os gates restantes, sem contratar serviços.
 
 ## Primeiro ambiente privado
 
-1. Criar um projeto Supabase separado para dados fictícios; aplicar migração
-   apenas após revisão e executar a suite SQL. Configurar Auth/convites/MFA.
+1. Usar namespaces próprios no projeto Free compartilhado escolhido pelo titular,
+   conforme [roteiro atualizado](free-shared-staging.md). Executar suítes com
+   fixtures somente na CI descartável. Validar Auth/convites/MFA separadamente.
 2. Substituir o servidor local por backend de produção; verificar assinatura,
    issuer, audience, expiração e revogação de sessão. Derivar subject/roles/case
    no servidor. Nunca usar headers de identidade enviados pelo navegador.
