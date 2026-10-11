@@ -17,6 +17,156 @@ async function api(path, data) {
 }
 function text(tag, value, cls='') { const el = document.createElement(tag); el.textContent = String(value??''); if(cls)el.className=cls; return el; }
 function button(label, onClick, cls='secondary') { const b=text('button',label,cls); b.addEventListener('click',async()=>{b.disabled=true;try{await onClick();}catch(e){notify(e.message,true);}finally{b.disabled=false;}}); return b; }
+
+/** Read-only context from the authorized report envelope. Never infer approval
+ * from model content, source freshness from today's clock, or missing amounts.
+ */
+function contextHeading(label, id) {
+  const heading = text('h3', label);
+  heading.id = id;
+  heading.tabIndex = -1;
+  return heading;
+}
+function contextList(entries) {
+  const list = document.createElement('dl');
+  list.className = 'context-facts';
+  for (const [label, value] of entries) {
+    const row = document.createElement('div');
+    row.append(text('dt', label), text('dd', value));
+    list.append(row);
+  }
+  return list;
+}
+function reportDate(value) {
+  if (value === null || value === undefined || value === '') return 'Não informada';
+  // Require a timezone; a local or malformed string must not look authoritative.
+  if (typeof value !== 'string' ||
+      !/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) ||
+      !Number.isFinite(Date.parse(value)) ||
+      new Date(value.slice(0, 10) + 'T00:00:00Z').toISOString().slice(0, 10) !== value.slice(0, 10)) return 'Data inválida — confirmar com o consultor';
+  return new Date(value).toLocaleString('pt-BR', { timeZone: 'UTC' }) + ' UTC';
+}
+function contextLabel(labels, value, fallback = 'Não informada') {
+  return typeof value === 'string' && Object.hasOwn(labels, value) ? labels[value] : fallback;
+}
+function renderDataContext(payload) {
+  const section = text('section', '', 'data-context');
+  section.setAttribute('aria-labelledby', 'data-context-title');
+  section.append(contextHeading('Qualidade dos dados', 'data-context-title'));
+  const quality = payload.data_quality || {};
+  const qualityStates = {
+    ok: 'Sem pendências declaradas no documento',
+    needs_input: 'Faltam dados para concluir',
+    degraded: 'Análise com limitações',
+    blocked: 'Análise bloqueada',
+    error: 'Falha na análise',
+  };
+  const freshness = {
+    not_live: 'Sem consulta ao vivo',
+    as_of_snapshot: 'Retrato na data de corte',
+    stale: 'Dados desatualizados',
+    unknown: 'Atualidade desconhecida',
+  };
+  const modes = {
+    synthetic_mock: 'Dados fictícios',
+    reviewed_data: 'Dados descritos como revisados',
+    incomplete: 'Dados incompletos',
+  };
+  section.append(contextList([
+    ['Condição da análise', contextLabel(qualityStates, payload.status)],
+    ['Origem dos dados', contextLabel(modes, quality.mode)],
+    ['Atualidade declarada', contextLabel(freshness, quality.freshness)],
+    ['Data de corte do documento', reportDate(payload.as_of)],
+  ]));
+  const guidance = {
+    not_live: 'Este cenário não acompanha o mercado. Confirme as fontes antes de usar seus resultados.',
+    as_of_snapshot: 'A data de corte descreve o retrato analisado; ela não comprova que os dados continuam atuais.',
+    stale: 'Peça fontes atualizadas ao consultor antes de usar esta análise para uma decisão.',
+    unknown: 'Confirme com o consultor quando as fontes foram observadas.',
+  };
+  section.append(text('p', contextLabel(guidance, quality.freshness,
+    'A atualidade das fontes não foi informada. Confirme a data dos dados com o consultor.'), 'context-guidance'));
+  if (Array.isArray(quality.notes)) {
+    const notes = document.createElement('ul');
+    for (const note of quality.notes) if (typeof note === 'string') notes.append(text('li', note));
+    if (notes.children.length) section.append(notes);
+  }
+  const sources = Array.isArray(payload.sources) ? payload.sources : [];
+  if (!sources.length) {
+    section.append(text('p', 'Nenhuma fonte foi registrada neste documento.', 'caption'));
+  } else {
+    const disclosure = document.createElement('details');
+    disclosure.className = 'source-details';
+    disclosure.append(text('summary', 'Conferir fontes registradas (' + sources.length + ')'));
+    const list = document.createElement('ul');
+    const kinds = { synthetic: 'Fictícia', document: 'Documento', onchain: 'On-chain', offchain: 'Off-chain' };
+    for (const source of sources) {
+      const item = document.createElement('li');
+      const data = source && typeof source === 'object' ? source : {};
+      item.append(text('strong', data.id || 'Fonte sem identificador'),
+        text('p', contextLabel(kinds, data.kind, 'Tipo não informado') + ' · Observada em: ' + reportDate(data.as_of)));
+      list.append(item);
+    }
+    disclosure.append(list);
+    section.append(disclosure);
+  }
+  // These fields do not exist in the structured report contract v0.1.0.
+  section.append(text('p',
+    'Moeda de referência e horizonte não são registrados no contrato deste diagnóstico. Confirme as unidades, o período e as premissas antes de comparar valores ou cenários.',
+    'caption'));
+  return section;
+}
+function renderVersionContext(report, isClient) {
+  const section = text('section', '', 'version-context');
+  section.setAttribute('aria-labelledby', 'version-context-title');
+  section.append(contextHeading('Revisão e entrega desta versão', 'version-context-title'));
+  const review = report.review || {}, publication = report.publication || {};
+  const recipients = Array.isArray(publication.recipients) ? publication.recipients : [];
+  const version = report.version === undefined || report.version === null ? 'Não informada' : String(report.version);
+  section.append(contextList([
+    ['Documento', report.id || 'Não informado'],
+    ['Versão aberta', version],
+    ['Posição no atendimento', report.is_latest === true
+      ? (isClient ? 'Mais recente entre as versões disponíveis para você' : 'Versão atual do atendimento')
+      : report.is_latest === false
+        ? (isClient ? 'Há uma versão mais recente disponível para você' : 'Versão anterior — consulte a versão atual')
+        : 'Não informada'],
+    ['Revisor registrado', review.approved_by || 'Revisão pendente'],
+    ['Revisão registrada em', reportDate(review.approved_at)],
+    ['Destinatários desta publicação', recipients.length
+      ? recipients.map(id => names[id] || id).join(', ')
+      : 'Nenhum destinatário com acesso nesta publicação'],
+    ['Publicada em', reportDate(publication.published_at)],
+  ]));
+  if (report.content_hash) {
+    const details = document.createElement('details');
+    details.className = 'source-details';
+    details.append(text('summary', 'Identificador do conteúdo desta versão'),
+      text('code', report.content_hash, 'content-digest'),
+      text('p', 'Identificador informado pelo servidor; não é uma certificação da análise.', 'caption'));
+    section.append(details);
+  }
+  section.append(text('p',
+    'A revisão se refere a este documento e versão. Confirmar recebimento registra a entrega; não aprova uma estratégia nem autoriza uma operação.',
+    'caption'));
+  return section;
+}
+function renderReadingNav() {
+  const nav = text('nav', '', 'reading-nav');
+  nav.setAttribute('aria-label', 'Leitura do diagnóstico');
+  for (const [label, id] of [
+    ['Conferir dados', 'data-context-title'],
+    ['Ver limites', 'report-limits-title'],
+    ['Conferir versão', 'version-context-title'],
+  ]) {
+    const link = text('a', label);
+    link.href = '#' + id;
+    link.addEventListener('click', event => { event.preventDefault(); $(id)?.focus(); });
+    nav.append(link);
+  }
+  return nav;
+}
+
 function switchView(view) { $('workspace').hidden=view!=='reports'; $('risk-view').hidden=view!=='risk'; $('reports-tab').classList.toggle('active',view==='reports'); $('risk-tab').classList.toggle('active',view==='risk'); $('breadcrumb').textContent=view==='risk'?'LABORATÓRIO DE RISCO':'DIAGNÓSTICOS'; }
 async function enterSession(current) {
   ++sessionGeneration; clearWorkspace(); session=current; $('login-view').hidden=true; $('logout').hidden=false;
@@ -50,10 +200,19 @@ async function showReport(id) {
   document.querySelectorAll('.report-row').forEach(el=>el.classList.toggle('selected',el.dataset.id===id));
   const panel=$('detail'),payload=r.payload||r.content||{},state=r.state||r.status;panel.replaceChildren(text('span',states[state]||state,'badge '+state),text('h2',r.title||'Diagnóstico de portfólio','detail-title'));
   const meta=text('div','','meta');meta.append(text('span',`VERSÃO ${r.version}`),text('span',r.case_id),text('span',r.review?.approved_by?`REVISOR: ${r.review.approved_by}`:'REVISÃO PENDENTE'));panel.append(meta);
+  panel.append(renderReadingNav(), renderDataContext(payload));
   const findings=payload.findings||[];panel.append(text('h3','Pontos da análise'));
+  if(typeof payload.summary==='string'&&findings.length)panel.append(text('p',payload.summary));
   if(!findings.length)panel.append(text('p',payload.summary||'Documento fictício para testar o ciclo de entrega.'));
   for(const f of findings){const div=text('div','','finding');div.append(text('strong',f.title||f.id||'Observação'),text('p',typeof f.evidence==='string'?f.evidence:JSON.stringify(f.evidence||f.description||'')));panel.append(div);}
-  for(const [key,label]of [['alternatives','Alternativas para discussão'],['limitations','Limites da análise'],['next_steps','Próximos passos']])if(payload[key]?.length){panel.append(text('h3',label));const ul=document.createElement('ul');payload[key].forEach(v=>ul.append(text('li',typeof v==='string'?v:JSON.stringify(v))));panel.append(ul);}
+  for(const [key,label]of [['alternatives','Alternativas para discussão'],['limitations','Limites da análise'],['next_steps','Próximos passos']]){
+    const items=Array.isArray(payload[key])?payload[key]:[];
+    if(!items.length&&key!=='limitations')continue;
+    panel.append(key==='limitations'?contextHeading(label,'report-limits-title'):text('h3',label));
+    if(items.length){const ul=document.createElement('ul');items.forEach(v=>ul.append(text('li',typeof v==='string'?v:JSON.stringify(v))));panel.append(ul);}
+    else panel.append(text('p','Os limites não foram registrados neste documento. Peça ao consultor as premissas e o que ficou fora da análise.'));
+  }
+  panel.append(renderVersionContext(r,session.role==='client'));
   panel.append(text('p','Dados de teste. A análise não executa operações financeiras.','caption'));
   const actions=text('div','','actions'),p=r.permissions||{},base='/api/reports/'+encodeURIComponent(id);
   if(p.approve)actions.append(button('Aprovar esta versão',()=>action(base+'/approve',{},'Versão aprovada pelo revisor desta sessão.')));

@@ -6,6 +6,9 @@ const CASES = [
   'a late download cannot create a file after logout and another identity',
   'a late restored session cannot replace a new identity after page reload',
   'desktop and mobile retain visible controls without horizontal overflow',
+  'guided demo exposes data context and supports keyboard reading',
+  'version context distinguishes published delivery from a newer private draft',
+  'incomplete stale and untrusted display fixtures remain explicit at narrow widths',
 ];
 if (process.argv.includes('--list')) {
   console.log(CASES.map((name, index) => `${index + 1}. ${name}`).join('\n'));
@@ -392,5 +395,107 @@ test(CASES[4], { timeout: 30000 }, async () => {
     await screenshot(page, `09-client-portal-${viewport.width}`);
     await logout(page);
     await assertNoOverflow();
+  }
+});
+
+
+test(CASES[5], { timeout: 30000 }, async () => {
+  const page = await newPage();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.getByRole('link', { name: 'Ir para o conteúdo' }).evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#main-content').evaluate(node => node === document.activeElement), true);
+  await page.locator('.demo-guide summary').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('.demo-guide').getAttribute('open'), '');
+  assert.match(await page.locator('.demo-guide').textContent(), /registros desaparecem/);
+  await login(page, 'ana');
+  const created = await doAction(page, '+ Preparar rascunho', '/api/cases/case-a/draft', 201);
+  const report = await created.json();
+  await page.locator('#data-context-title').waitFor();
+  const context = await page.locator('.data-context').textContent();
+  for (const label of ['Dados fictícios', 'Análise com limitações', 'Sem consulta ao vivo', '11/10/2026', 'UTC']) {
+    assert.ok(context.includes(label), label);
+  }
+  await page.locator('.data-context summary').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.getByText('synthetic-fixture-001', { exact: true }).isVisible(), true);
+  for (const [label, id] of [['Conferir dados', 'data-context-title'], ['Ver limites', 'report-limits-title'], ['Conferir versão', 'version-context-title']]) {
+    await page.getByRole('link', { name: label, exact: true }).focus();
+    await page.keyboard.press('Enter');
+    const target = page.locator('#' + id);
+    assert.equal(await target.evaluate(node => node === document.activeElement), true);
+    const box = await target.boundingBox();
+    assert.ok(box && box.y >= 0 && box.y < 1000, 'Focused heading must be in the viewport');
+    assert.notEqual(await target.evaluate(node => getComputedStyle(node).outlineStyle), 'none');
+  }
+  assert.match(await page.locator('.version-context').textContent(), /Revisão pendente/);
+  assert.ok((await page.locator('.version-context').textContent()).includes(report.id));
+  await screenshot(page, '10-guided-reading-data-version-keyboard');
+});
+
+test(CASES[6], { timeout: 30000 }, async () => {
+  const rui = await newPage();
+  await login(rui, 'rui');
+  await viewReport(rui, 'report-a-v1');
+  await doAction(rui, 'Aprovar esta versão', '/api/reports/report-a-v1/approve');
+  await doAction(rui, 'Publicar para cliente A', '/api/reports/report-a-v1/publish');
+  const client = await newPage();
+  await login(client, 'client-a');
+  await viewReport(client, 'report-a-v1');
+  let visible = await client.locator('.version-context').textContent();
+  assert.ok(visible.includes('rui'));
+  assert.ok(visible.includes('Cliente A'));
+  assert.ok(visible.includes('não aprova uma estratégia'));
+  const ana = await newPage();
+  await login(ana, 'ana');
+  const response = await doAction(ana, '+ Preparar rascunho', '/api/cases/case-a/draft', 201);
+  const newer = await response.json();
+  await client.reload();
+  await client.locator('.report-row').waitFor();
+  await viewReport(client, 'report-a-v1');
+  visible = await client.locator('.version-context').textContent();
+  assert.ok(visible.includes('Mais recente entre as versões disponíveis para você'));
+  assert.ok(!visible.includes(newer.id));
+  await denied(client, newer.id);
+  await rui.reload();
+  await rui.locator('.report-row').first().waitFor();
+  await viewReport(rui, 'report-a-v1');
+  assert.ok((await rui.locator('.version-context').textContent()).includes('Versão anterior'));
+  assert.equal(await rui.getByRole('button', { name: 'Aprovar esta versão', exact: true }).count(), 0);
+  assert.equal(await rui.getByRole('button', { name: 'Publicar para cliente A', exact: true }).count(), 0);
+  await screenshot(client, '11-client-authorized-version-context');
+  await screenshot(rui, '12-reviewer-previous-version-context');
+});
+
+test(CASES[7], { timeout: 30000 }, async () => {
+  const page = await newPage({ width: 320, height: 800 });
+  await login(page, 'ana');
+  // Display-only response fixture. No backend decision or financial data is changed.
+  const literal = '<img src="https://invalid.example/pixel" onerror="alert(1)">';
+  await page.route('**/api/reports/report-a-v1', async route => {
+    const response = await route.fetch();
+    assert.equal(response.status(), 200);
+    const report = await response.json();
+    report.payload = {
+      status: 'needs_input', as_of: '2026-02-30T00:00:00Z',
+      data_quality: { mode: 'incomplete', freshness: 'stale', notes: [literal] },
+      sources: [{ id: 'synthetic-source-' + 'x'.repeat(160), kind: 'document', as_of: null }],
+      findings: [], limitations: [],
+    };
+    await route.fulfill({ response, body: JSON.stringify(report) });
+  });
+  await viewReport(page, 'report-a-v1');
+  await page.locator('.data-context summary').click();
+  const context = await page.locator('.data-context').textContent();
+  for (const label of ['Faltam dados para concluir', 'Dados incompletos', 'Dados desatualizados',
+    'Data inválida', 'Peça fontes atualizadas', literal]) assert.ok(context.includes(label), label);
+  assert.equal(await page.locator('.data-context img, .data-context iframe, .data-context script').count(), 0);
+  assert.ok((await page.locator('#detail').textContent()).includes('Os limites não foram registrados'));
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const size = await page.evaluate(() => ({ width: innerWidth, content: document.documentElement.scrollWidth }));
+    assert.ok(size.content <= size.width, 'Context overflow at ' + width + ': ' + JSON.stringify(size));
+    await screenshot(page, '13-incomplete-data-context-' + width);
   }
 });
