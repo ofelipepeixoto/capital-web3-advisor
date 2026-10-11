@@ -95,6 +95,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/capital-supabase"
           cd "$RUNNER_TEMP/capital-supabase"
           supabase init
+          python3 - <<'PYCONFIG'
+          from pathlib import Path
+          p = Path('supabase/config.toml')
+          content = p.read_text()
+          old = 'schemas = ["public", "graphql_public"]'
+          if content.count(old) != 1:
+              raise SystemExit('Unexpected CLI exposed-schema defaults; review before changing')
+          p.write_text(content.replace(old, 'schemas = ["public", "graphql_public", "capital_web3"]'))
+          PYCONFIG
+          supabase migration new unrelated_neighbor_fixture
+          cp "$GITHUB_WORKSPACE/tests/fixtures/shared_neighbor.sql" supabase/migrations/*_unrelated_neighbor_fixture.sql
           supabase migration new capital_advisory_foundation
           cp "$GITHUB_WORKSPACE/supabase/migrations/0001_advisory.sql" supabase/migrations/*_capital_advisory_foundation.sql
           supabase migration new human_workflow

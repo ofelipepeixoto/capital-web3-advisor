@@ -48,6 +48,23 @@ function publishBody() {
     expected_manifest_sha256: MANIFEST, expires_at: null, idempotency_key: IDEMPOTENCY };
 }
 
+test("database schema is fixed server-side for reads and RPC writes", async () => {
+  for (const [path, options] of [
+    ['/reports', {}],
+    ['/reports/' + VERSION + '/review', { method: 'POST', body: reviewBody() }],
+  ]) {
+    const { handler, calls } = setup();
+    const result = await handler(request(path, { ...options,
+      headers: { 'Accept-Profile': 'public', 'Content-Profile': 'private' } }));
+    assert.equal(result.status, 200);
+    assert.equal(calls[0].init.headers['Accept-Profile'], undefined);
+    assert.equal(calls[0].init.headers['Content-Profile'], undefined);
+    assert.equal(calls[1].init.headers['Accept-Profile'], 'capital_web3');
+    assert.equal(calls[1].init.headers['Content-Profile'], 'capital_web3');
+    assert.equal(calls[1].init.headers.Authorization, 'Bearer ' + TOKEN);
+  }
+});
+
 test("recipient selection reads active case membership through the same user JWT", async () => {
   const { handler, calls } = setup({ db: [{ user_id: CLIENT }] });
   const result = await handler(request('/cases/' + VERSION + '/recipients'));

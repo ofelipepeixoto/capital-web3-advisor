@@ -1,7 +1,8 @@
 # Backend Supabase — fundação, workflow humano e gate de implantação
 
 Esta especificação prepara migrações, RPCs e testes para um ambiente **isolado**.
-Nenhum projeto ou bucket na nuvem foi criado por estes arquivos. A homologação
+A fundação e o bucket privado foram implantados no projeto Free compartilhado
+autorizado; veja o manifesto em `docs/free-shared-staging.md`. A homologação
 descartável da CI usa Auth, PostgREST e Storage reais com fixtures; a API Python
 local é independente desse backend.
 
@@ -9,9 +10,13 @@ local é independente desse backend.
 estão em [homologação](homologation.md). A API hospedada e o portal com Auth de
 produção permanecem pendentes. Não confundir claims SQL sintéticas com login.
 
+O destino autorizado passou a ser um projeto Free compartilhado. O roteiro em
+[free-shared-staging.md](free-shared-staging.md) prevalece sobre o planejamento
+inicial dedicado. As suítes com fixtures são exclusivas da CI descartável.
+
 ## Modelo e fluxo
 
-As tabelas `public.advisory_*` usam Supabase Auth como referência de identidade. Não armazenam seed, chave privada, passphrase ou credenciais de exchange.
+As tabelas `capital_web3.advisory_*` usam Supabase Auth como referência de identidade. Não armazenam seed, chave privada, passphrase ou credenciais de exchange.
 
 | Tabela | Finalidade | Escrita autenticada pela Data API |
 |---|---|---|
@@ -53,7 +58,7 @@ Claims `user_metadata` não concedem autorização. Contas Supabase Auth anônim
 
 ## Funções internas e workflow privilegiado
 
-O schema `advisory_private` **não pode ser incluído nos exposed schemas** da Data API. Seus helpers de autorização são booleanos, somente leitura, usam `auth.uid()` do contexto e não aceitam uma identidade arbitrária do chamador. O helper interno de digest não tem `EXECUTE` para clientes. `SECURITY DEFINER` foi limitado a essas consultas e aos triggers que precisam consultar registros protegidos ou escrever audit. Todas têm `search_path` fixo; privilégios `EXECUTE` genéricos são revogados. Os triggers não têm grants de execução para clientes.
+O schema `capital_web3_private` **não pode ser incluído nos exposed schemas** da Data API. Seus helpers de autorização são booleanos, somente leitura, usam `auth.uid()` do contexto e não aceitam uma identidade arbitrária do chamador. O helper interno de digest não tem `EXECUTE` para clientes. `SECURITY DEFINER` foi limitado a essas consultas e aos triggers que precisam consultar registros protegidos ou escrever audit. Todas têm `search_path` fixo; privilégios `EXECUTE` genéricos são revogados. Os triggers não têm grants de execução para clientes.
 
 Os helpers precisam pertencer a uma role administrativa controlada com `BYPASSRLS` ou superuser. Ser proprietário da tabela isoladamente não contorna `FORCE ROW LEVEL SECURITY` e pode causar recursão das policies. A migração falha antes do DDL se a role instaladora não tem esse atributo; a suíte verifica os owners das funções. Validar acesso/owners no staging; não desativar RLS nem conceder bypass a usuários ou staff para solucionar falha de instalação.
 

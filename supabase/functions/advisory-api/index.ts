@@ -206,7 +206,12 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
           return await upstreamFetch(config!.base + pathname, {
             ...init, redirect: "error", signal: AbortSignal.timeout(8000),
             headers: { "apikey": config!.key, "Authorization": authorization,
-              "Content-Type": "application/json", "Accept": "application/json" },
+              "Content-Type": "application/json", "Accept": "application/json",
+              // Profile is fixed by the server. Auth/Storage never receive a DB profile.
+              ...(pathname.startsWith("/rest/v1/") ? {
+                "Accept-Profile": "capital_web3", "Content-Profile": "capital_web3",
+              } : {}),
+            },
           });
         } catch { throw new ApiError(503, "upstream_unavailable"); }
       };
