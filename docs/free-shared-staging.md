@@ -71,11 +71,37 @@ da desativação revisada; não tocar em policies/buckets de outras aplicações
 
 ## Evidência e pendências
 
-O teste local de contratos passou durante a preparação. A CI, a implantação e a
-verificação na nuvem serão registradas separadamente após execução. CI local
-com Auth/PostgREST/Storage reais não comprova gateway Deno, TLS da hospedagem,
-configurações globais de Auth ou segurança de todas as aplicações vizinhas.
-O piloto com clientes reais permanece bloqueado.
+A fundação foi implantada no projeto escolhido, que permaneceu `ACTIVE_HEALTHY`
+e no plano Free. Migração `capital_web3_free_staging_foundation`, versão
+`20261011193554`. Foram verificadas 13 tabelas da aplicação + 1 privada, todas
+com RLS habilitada/forçada; cinco RPCs; cinco policies Storage e bucket privado.
+Nenhuma conta real ou fictícia persistente foi criada na nuvem.
+
+O fingerprint dos objetos anteriores permaneceu igual. Isso verifica estruturas,
+grants, policies e configuração de exposição observados, não é backup dos dados
+nem auditoria integral das outras aplicações. Smoke SQL transacional confirmou
+negação de escrita privilegiada direta, ausência de execução RPC anônima e
+negação de recibo para uma identidade sem vínculo. As claims desse smoke são
+sintéticas; não demonstram login Auth real na nuvem.
+
+A CI [38161317031](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38161317031)
+passou nos três jobs para o commit `4f1efd3e3438b8df938ef888f9fb72bc8476930c`.
+Inclui os testes SQL de aplicação vizinha, Auth/PostgREST/Storage reais locais,
+Chromium da demonstração e portal autenticado. O commit seguinte só registra
+esta evidência. [Manifesto](evidence/free-shared-staging-2026-10-11.json).
+
+Advisors: nenhum WARN/ERROR novo atribuído aos schemas da Capital. O INFO da
+tabela privada sem policy é esperado: privilégios de clientes estão revogados
+para a tabela de idempotência, acessada apenas pelos helpers controlados.
+Um aviso de proteção de senhas vazadas já existia no Auth compartilhado; não foi
+alterado. Isso não equivale a declaração de segurança total.
+
+Ainda falta adicionar `capital_web3` às configurações de schemas expostos da
+Data API, preservando os existentes. O conector Supabase conectado não oferece
+essa configuração; a alternativa de gestão encontrada não tem conexão ativa.
+Não foi feito override global por SQL. A Edge e o portal privado também não
+foram implantados, e não houve login real na nuvem. O piloto com clientes reais
+permanece bloqueado.
 
 Referências oficiais consultadas em 11/10/2026:
 

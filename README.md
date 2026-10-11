@@ -15,7 +15,8 @@ não torna públicos os futuros diagnósticos.
 O titular escolheu o projeto existente `radar-disruptivo`. A adaptação usa os
 schemas `capital_web3` e `capital_web3_private`, com Auth e cotas compartilhados.
 Consulte [plano e limites do staging Free](docs/free-shared-staging.md).
-A implantação em nuvem e seus resultados serão registrados separadamente.
+A fundação de banco/Storage foi implantada e verificada. Exposição do schema,
+Edge e portal hospedados continuam pendentes; ver o manifesto no roteiro.
 
 ## Testar
 
@@ -73,7 +74,7 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | Cálculos/API/portal local | Implementados; verificar `docs/testing.md` para resultados |
 | OpenAI API | Adapter fictício; consumo pago desativado |
 | MCP | Exemplo local de protocolo; não é servidor remoto homologado |
-| Supabase | Homologação descartável na CI; nenhum projeto/banco na nuvem alterado |
+| Supabase | Fundação Free compartilhada implantada; API/portal hospedados ainda pendentes |
 | n8n | JSONs inativos; importação/execução na instância ainda não realizada |
 | Sites | Interface reaproveitável e roteiro; nenhum Site publicado |
 | Hostinger | Roteiro de staging; nenhum serviço/VPS alterado |

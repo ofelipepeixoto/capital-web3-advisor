@@ -1,7 +1,8 @@
 # Backend Supabase — fundação, workflow humano e gate de implantação
 
 Esta especificação prepara migrações, RPCs e testes para um ambiente **isolado**.
-Nenhum projeto ou bucket na nuvem foi criado por estes arquivos. A homologação
+A fundação e o bucket privado foram implantados no projeto Free compartilhado
+autorizado; veja o manifesto em `docs/free-shared-staging.md`. A homologação
 descartável da CI usa Auth, PostgREST e Storage reais com fixtures; a API Python
 local é independente desse backend.
 

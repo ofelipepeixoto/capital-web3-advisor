@@ -1,6 +1,7 @@
 # Preparação de staging: Sites, Supabase, OpenAI, n8n e Hostinger
 
-Nenhum projeto Supabase na nuvem foi provisionado. A etapa de homologação usa
+A fundação Supabase usa o projeto Free existente autorizado, com namespaces
+Capital próprios. API e portal na nuvem permanecem pendentes. A homologação usa
 um stack Supabase descartável na CI, API com JWT do usuário e Chromium contra
 a demonstração local. Consulte [evidências e gates](homologation.md).
 Esta sequência descreve os gates restantes, sem contratar serviços.

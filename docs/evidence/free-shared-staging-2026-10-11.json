@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-11",
+  "mode": "shared-free-staging-foundation",
+  "tested_source_commit": "4f1efd3e3438b8df938ef888f9fb72bc8476930c",
+  "ci": {
+    "run_id": 38161317031,
+    "url": "https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/38161317031",
+    "conclusion": "success",
+    "jobs": [
+      "python-tests",
+      "browser-homologation",
+      "supabase-homologation"
+    ]
+  },
+  "deployment": {
+    "project_name": "radar-disruptivo",
+    "organization_plan": "free",
+    "project_status": "ACTIVE_HEALTHY",
+    "migration_name": "capital_web3_free_staging_foundation",
+    "migration_version": "20261011193554",
+    "application_tables": 13,
+    "private_tables": 1,
+    "all_tables_rls_enabled_and_forced": true,
+    "rpcs": 5,
+    "storage_policies": 5,
+    "bucket": "capital-web3-advisory",
+    "bucket_public": false,
+    "bucket_file_size_limit": 10485760,
+    "anonymous_schema_usage": false,
+    "anonymous_table_grants": 0,
+    "unsafe_definer_owners": 0
+  },
+  "source_sha256": {
+    "0001_advisory.sql": "7f45daf800abf302d8ce55607fd59c1b338bb5234c40dcceb18ac751577c49f3",
+    "0002_human_workflow.sql": "16d0bd97ffc6e242b1aa51c133522a7693ba94e6e6b15fcb8f6022d1aaf4d07e"
+  },
+  "preservation": {
+    "before_md5": "b54c6ed4e8cd17a4a2849759ad93c315",
+    "after_md5": "b54c6ed4e8cd17a4a2849759ad93c315",
+    "scope": "catalog metadata for preexisting application schemas, relations, columns, functions, policies, triggers, buckets and exposed schemas; not a content backup or full service audit"
+  },
+  "cloud_smoke": {
+    "privileged_direct_writes_denied": true,
+    "anonymous_rpc_execute_denied": true,
+    "unassigned_synthetic_sql_claims_read_no_rows": true,
+    "unassigned_receipt_rpc_denied": true,
+    "transaction_rolled_back": true,
+    "real_cloud_auth_login_tested": false
+  },
+  "advisors": {
+    "new_capital_errors": 0,
+    "new_capital_warnings": 0,
+    "expected_private_table_no_policy_info": 1,
+    "preexisting_auth_warning_unchanged": true
+  },
+  "pending": [
+    "Expose capital_web3 through provider Data API settings; preserve existing schemas; never expose capital_web3_private",
+    "Deploy configured Edge API and private portal",
+    "Validate hosted Auth/gateway/portal end-to-end with synthetic accounts",
+    "Human PR review and dependent merges",
+    "Real-client pilot not released"
+  ]
+}
