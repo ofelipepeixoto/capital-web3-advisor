@@ -11,7 +11,8 @@ não torna públicos os futuros diagnósticos.
 
 ## Testar
 
-Python 3.11 ou superior. Sem pacotes externos para a demonstração.
+Python 3.11 ou superior; Node.js 18+ para o teste de transição da interface.
+Sem pacotes externos para a demonstração ou estes testes.
 
 ```sh
 git clone https://github.com/ofelipepeixoto/capital-web3-advisor.git
