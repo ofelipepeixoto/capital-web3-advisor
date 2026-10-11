@@ -8,6 +8,7 @@ check: test
 	@if test -f tests/test_ui_session.cjs; then node tests/test_ui_session.cjs; fi
 	node tests/test_ui_context.cjs
 	@if test -f tests/test_api_staging.mjs; then node --test tests/test_api_staging.mjs; fi
+	node --test tests/test_staging_client.mjs
 demo:
 	$(PYTHON) -m capital_web3.server
 mcp:

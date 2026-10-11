@@ -48,6 +48,20 @@ function publishBody() {
     expected_manifest_sha256: MANIFEST, expires_at: null, idempotency_key: IDEMPOTENCY };
 }
 
+test("recipient selection reads active case membership through the same user JWT", async () => {
+  const { handler, calls } = setup({ db: [{ user_id: CLIENT }] });
+  const result = await handler(request('/cases/' + VERSION + '/recipients'));
+  assert.equal(result.status, 200);
+  assert.deepEqual((await result.json()).data, [{ user_id: CLIENT }]);
+  assert.ok(calls[1].url.includes('advisory_case_clients?select=user_id&active=eq.true&case_id=eq.' + VERSION));
+  assert.equal(calls[1].init.headers.Authorization, 'Bearer ' + TOKEN);
+});
+test("recipient selection rejects malformed case identifiers", async () => {
+  const { handler, calls } = setup();
+  assert.equal((await handler(request('/cases/not-a-uuid/recipients'))).status, 400);
+  assert.equal(calls.length, 1);
+});
+
 test("configuration closes before network if the origin list is absent", async () => {
   const { handler, calls } = setup({ env: { ADVISORY_ALLOWED_ORIGINS: "" } });
   const result = await handler(request());

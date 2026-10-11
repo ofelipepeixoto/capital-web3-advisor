@@ -79,7 +79,7 @@ async function main() {
     const session = await parsed(login);
     requireCondition(typeof session.access_token === "string" && session.user?.id === id,
       "real Auth session did not match its synthetic account");
-    users[role] = { id, token: session.access_token };
+    users[role] = { id, token: session.access_token, email, password };
   }
   pass("real Auth login for five synthetic accounts", Object.keys(users).length === 5);
 
@@ -237,6 +237,11 @@ notify pgrst,'reload schema';`;
   const afterRevoke = await result("clientA", "/reports");
   pass("revoked versions disappear from client list", afterRevoke.status === 200 && afterRevoke.body.data.length === 0);
   console.log("REAL SUPABASE LOCAL: " + assertions + " assertions passed; Auth/PostgREST/Storage exercised.");
+  if (process.env.CAPITAL_STAGING_BROWSER === '1') {
+    const { runStagingBrowser } = await import('../browser/staging_supabase.mjs');
+    try { await runStagingBrowser({ status, users, ids, handler, origin }); }
+    catch (error) { throw new SafeTestFailure(error.message); }
+  }
   console.log("Edge deployment, cloud staging and production approval remain unvalidated.");
 }
 

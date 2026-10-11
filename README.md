@@ -49,6 +49,7 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | `capital_web3/risk.py` | NAV, dívida, concentração, stress, IL e CLAMM com Decimal |
 | `capital_web3/service.py` | Casos, autorização por objeto e revisão/publicação por versão |
 | `capital_web3/server.py`, `apps/web/` | API local e console/portal de demonstração |
+| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth Supabase e bundle estático; implantação pendente |
 | `capital_web3/adapters.py`, `contracts/` | Relatório fictício e contratos; OpenAI real bloqueada |
 | `capital_web3/mcp.py` | Exemplo MCP local por stdio, com ferramentas de leitura |
 | `supabase/` | RLS, workflow humano persistente e API Edge autenticada |

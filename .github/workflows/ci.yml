@@ -119,8 +119,24 @@ jobs:
           echo "CAPITAL_SUPABASE_STATUS_FILE=$status_file" >> "$GITHUB_ENV"
       - name: Execute rollback SQL authorization suites
         run: python3 scripts/run_supabase_sql.py
+      - name: Install exact Chromium tooling for authenticated staging portal
+        run: |
+          npm ci --prefix tests/browser --ignore-scripts --no-audit --no-fund
+          cd tests/browser
+          npx playwright-core install --with-deps chromium
       - name: Exercise actual Auth PostgREST and private Storage
+        env:
+          CAPITAL_STAGING_BROWSER: '1'
+          CAPITAL_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/capital-staging-browser
         run: node tests/integration/supabase_e2e.mjs
+      - name: Retain synthetic authenticated portal evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: synthetic-staging-${{ github.run_id }}
+          path: ${{ runner.temp }}/capital-staging-browser
+          retention-days: 7
+          if-no-files-found: warn
       - name: Stop disposable stack and remove credentials
         if: always()
         run: |
