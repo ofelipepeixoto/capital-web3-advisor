@@ -173,8 +173,10 @@ test('new attendance preserves unsaved answers until an explicit discard', async
   assert.equal(h.ui.active.id, entry.id); assert.equal(h.ui.intake.profile.objective, 'protect_family');
   await button(h.root, 'Continuar preenchendo').click();
   assert.equal(h.ui.intake.profile.objective, 'protect_family'); assert.equal(focused.className, 'step-heading');
+  const oldCreationKey = h.ui.key('/cofre/cases', { workspace_id: 'workspace-a', client_user_id: 'client-a' });
   await button(h.root, 'Novo atendimento').click();
   await button(h.root, 'Descartar alterações e iniciar novo atendimento').click();
+  assert.notEqual(h.ui.key('/cofre/cases', { workspace_id: 'workspace-a', client_user_id: 'client-a' }), oldCreationKey, 'a deliberate new attendance starts a distinct creation operation');
   assert.equal(h.ui.active, null); assert.equal(h.ui.intake, null); assert.equal(h.ui.dirty, false);
   assert.ok(button(h.root, 'Criar atendimento fictício')); assert.equal(focused.textContent, 'Abrir um caso fictício');
 });

@@ -194,6 +194,7 @@ export class CofreWorkspace {
         this.action('Descartar alterações e iniciar novo atendimento', () => this.startNew({ discard: true }), 'danger'));
       this.detail.replaceChildren(caution); caution.focus(); return;
     }
+    for (const key of this.keys.keys()) if (key.startsWith('/cofre/cases{')) this.keys.delete(key);
     ++this.caseEpoch; this.active = null; this.intake = null; this.dirty = false; this.revision = 0; this.step = 0; this.furthestStep = 0;
     this.render(); const heading = this.detail.querySelector('h3'); heading.tabIndex = -1; heading.focus();
   }
