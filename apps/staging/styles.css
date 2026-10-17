@@ -5,13 +5,14 @@
 .auth-error{color:#ffb4b4;border-left:3px solid currentColor;padding-left:12px}
 #auth-controls code{overflow-wrap:anywhere;user-select:all}
 @media print{#auth-controls{display:none!important}}
-.report-navigation{padding:14px 16px;margin:16px 0 24px;background:#1d3047;border:1px solid #526b8c;border-radius:8px}
-.report-navigation-links{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:8px}
-.report-navigation a{color:#83ead4;text-underline-offset:3px;padding:4px 0}
-.report-navigation a:focus-visible{outline:3px solid #f2cd80;outline-offset:3px}
-#reports button[aria-pressed=true]{border-color:#6ae0c6;background:#234a49}
-#detail h2:focus{outline:none}
-#detail h2:focus-visible{outline:3px solid #f2cd80;outline-offset:4px}
-@media(max-width:740px){.report-navigation-links{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}}
-@media(max-width:420px){.report-navigation-links{grid-template-columns:1fr}}
-@media print{.report-navigation{display:none!important}}
+
+/* Navigation and task orientation; preserve the existing Capital Web3 palette. */
+a{color:#8ce8d4}a:focus-visible,textarea:focus-visible,[tabindex="-1"]:focus-visible{outline:3px solid #f2cd80;outline-offset:4px}
+.skip-link{position:absolute;left:16px;top:8px;transform:translateY(-180%);z-index:10;padding:12px 18px;background:#142036;border:2px solid #6ae0c6;border-radius:8px}.skip-link:focus{transform:none}
+.compact{margin:20px auto}.compact h1{margin-top:0}.access-help{border-top:1px solid #30415d;padding-top:14px;margin-top:20px}.access-help summary{min-height:44px;padding:8px 0}
+#workspace-nav{padding-bottom:16px;border-bottom:1px solid #30415d}#workspace-nav button[aria-current=page]::before{content:'● ';color:#6ae0c6}
+.step-navigation{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0}.step-navigation button{font-size:.85rem;padding:8px 10px;flex:1 1 140px;text-align:left}.step-navigation button[aria-current=step]{border:2px solid #6ae0c6;background:#234a49;font-weight:700}
+.save-status{border-left:3px solid #d6b16d;padding-left:12px}.report-navigation{margin:18px 0;padding-bottom:12px;border-bottom:1px solid #415676}.report-navigation-links{display:grid;gap:4px}.report-navigation-links a{padding:9px 4px;min-height:44px}
+#detail h3{scroll-margin-top:24px}#reports-heading,#cases-heading{scroll-margin-top:20px}
+@media(max-width:740px){.compact{margin:16px auto}.step-navigation button{flex-basis:calc(50% - 6px)}#workspace-nav button{flex:1}.report-navigation>button{width:100%}}
+@media print{.skip-link,.step-navigation,.access-help{display:none!important}}

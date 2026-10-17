@@ -21,19 +21,24 @@ function reportLabel(report, index) {
   return `${title || 'Diagnóstico ' + (index + 1)} · versão ${report.version_number}`;
 }
 function reportNavigation(panel, body) {
-  const sections = [...body.querySelectorAll('h3')];
-  if (sections.length < 3) return;
   const nav = element('nav', '', 'report-navigation no-print');
-  nav.setAttribute('aria-label', 'Seções do diagnóstico');
-  nav.append(element('strong', 'Ir para uma seção'));
-  const links = element('div', '', 'report-navigation-links');
-  sections.forEach((heading, index) => {
-    heading.id = `report-section-${index + 1}`;
-    const link = element('a', heading.textContent);
-    link.href = `#${heading.id}`;
-    links.append(link);
-  });
-  nav.append(links); panel.append(nav);
+  nav.setAttribute('aria-label', 'Navegação do diagnóstico');
+  nav.append(button('Voltar à lista de diagnósticos', () => {
+    const selected = [...$('reports').querySelectorAll('button')].find(item => item.getAttribute('aria-pressed') === 'true');
+    (selected || $('reports-heading')).focus();
+  }));
+  const sections = [...body.querySelectorAll('h3')];
+  if (sections.length > 2) {
+    const details = element('details'); details.append(element('summary', 'Ir para uma seção do diagnóstico'));
+    const links = element('div', '', 'report-navigation-links');
+    sections.forEach((heading, index) => {
+      heading.id = `report-section-${index + 1}`; heading.tabIndex = -1;
+      const link = element('a', heading.textContent); link.href = '#' + heading.id;
+      link.addEventListener('click', event => { event.preventDefault(); heading.focus(); }); links.append(link);
+    });
+    details.append(links); nav.append(details);
+  }
+  panel.append(nav);
 }
 function clearWorkspace() {
   ++generation; ++detailGeneration; session = null; reports = []; publications = []; requestKeys.clear();
@@ -142,10 +147,9 @@ async function openReport(report) {
   const documentBody = facts(content, staff);
   panel.replaceChildren(element('h2', typeof content.title === 'string' ? content.title : 'Diagnóstico'),
     element('p', 'Versão ' + report.version_number + ' · documento ' + report.id, 'muted'));
-  reportNavigation(panel, documentBody);
-  panel.append(documentBody);
+  reportNavigation(panel, documentBody); panel.append(documentBody);
   for (const choice of $('reports').querySelectorAll('button')) choice.setAttribute('aria-pressed', String(choice.dataset.version === report.id));
-  if (typeof matchMedia === 'function' && matchMedia('(max-width: 740px)').matches) { panel.querySelector('h2').tabIndex = -1; panel.querySelector('h2').focus(); }
+  const heading = panel.querySelector('h2'); heading.tabIndex = -1; heading.focus();
   if (!staff) panel.append(renderPublicationContext(publications.filter(row => row.report_version_id === report.id)));
   const proof = element('details'); proof.append(element('summary', 'Identificador desta versão'), element('code', row.content_sha256));
   if (pkg) proof.append(element('p', 'Identificador dos anexos'), element('code', pkg.manifest_sha256));
@@ -232,19 +236,20 @@ async function openReport(report) {
   panel.append(review);
 }
 
-function showView(view) {
+function showView(view, focus = false) {
   activeView = view;
   $('cases-panel').hidden = view !== 'cases'; $('diagnostics-panel').hidden = view !== 'diagnostics';
   $('cases-tab').setAttribute('aria-current', view === 'cases' ? 'page' : 'false');
   $('reports-tab').setAttribute('aria-current', view === 'diagnostics' ? 'page' : 'false');
+  if (focus) $(view === 'cases' ? 'cases-heading' : 'reports-heading').focus();
 }
 cofre = new CofreWorkspace({ root: $('cofre-workspace'), api: (path, body) => client.api(path, body),
   currentSession: () => session, notice: message,
   onCreated: async () => { const epoch = generation, current = await client.api('/session'); if (epoch === generation && session && current.user_id === session.user_id) session = current; },
   onSaved: async reportId => { await refresh(); if (!session) return; showView('diagnostics'); const report = reports.find(row => row.id === reportId); if (report) await openReport(report); },
 });
-$('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases'); });
-$('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics'); });
+$('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
+$('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
 window.addEventListener('beforeunload', event => { if (cofre.dirty && session) { event.preventDefault(); event.returnValue = ''; } });
 
 async function continueAccess(current) {
@@ -263,13 +268,13 @@ async function continueAccess(current) {
 
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault(); if (busy || !client) return;
-  busy = true; $('login').disabled = true; message('');
+  busy = true; $('login').disabled = true; $('login').textContent = 'Entrando…'; message('');
   const email = $('email').value.trim(), password = $('password').value; $('password').value = '';
   try {
     const current = await client.login(email, password);
     await continueAccess(current);
   } catch (error) { client.clear(); message(error.message); }
-  finally { busy = false; $('login').disabled = false; }
+  finally { busy = false; $('login').disabled = false; $('login').textContent = 'Entrar'; }
 });
 $('logout').addEventListener('click', async () => {
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }

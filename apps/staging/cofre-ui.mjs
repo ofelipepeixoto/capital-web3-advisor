@@ -129,7 +129,7 @@ export class CofreWorkspace {
   clear() {
     this.epoch = (this.epoch || 0) + 1; this.caseEpoch = (this.caseEpoch || 0) + 1;
     this.roster = []; this.cases = []; this.active = null; this.intake = null; this.revision = 0;
-    this.step = 0; this.inventoryIndex = 0; this.pending = false; this.dirty = false; this.keys = new Map(); this.root.replaceChildren();
+    this.step = 0; this.furthestStep = 0; this.inventoryIndex = 0; this.pending = false; this.dirty = false; this.keys = new Map(); this.root.replaceChildren();
     this.root.setAttribute('aria-busy', 'false');
   }
   suspend() {
@@ -172,7 +172,11 @@ export class CofreWorkspace {
   render() {
     const layout = node('div', '', 'layout cofre-layout'), aside = node('aside', '', 'card'), detail = node('section', '', 'card cofre-editor');
     const error = node('p', '', 'cofre-error'); error.tabIndex = -1; error.setAttribute('role', 'alert'); error.hidden = true;
-    aside.append(node('h3', 'Atendimentos atribuídos'));
+    const listHeading = node('h3', 'Atendimentos atribuídos'); listHeading.id = 'cofre-list-heading'; listHeading.tabIndex = -1;
+    aside.append(listHeading);
+    if (this.roster.some(row => row.user_id === this.currentSession()?.user_id && row.member_role === 'analyst')) {
+      aside.append(this.action('Novo atendimento', () => this.startNew(), 'primary'));
+    }
     if (!this.cases.length) aside.append(node('p', 'Você ainda não tem atendimentos atribuídos. Crie um caso fictício ou peça a atribuição à equipe.'));
     for (const entry of this.cases) {
       const btn = this.action(entry.client_safe_title || 'Atendimento fictício', () => this.open(entry));
@@ -182,11 +186,27 @@ export class CofreWorkspace {
     this.detail = detail;
     if (this.active && this.intake) this.renderEditor(); else this.renderCreate();
   }
+  startNew({ discard = false } = {}) {
+    if (this.dirty && !discard) {
+      const caution = node('section', '', 'boundary'); caution.tabIndex = -1;
+      caution.append(node('p', 'Há respostas não salvas. Continue este atendimento ou descarte as alterações para abrir um novo.'),
+        this.action('Continuar preenchendo', () => { this.renderEditor(); this.focusHeading(); }),
+        this.action('Descartar alterações e iniciar novo atendimento', () => this.startNew({ discard: true }), 'danger'));
+      this.detail.replaceChildren(caution); caution.focus(); return;
+    }
+    ++this.caseEpoch; this.active = null; this.intake = null; this.dirty = false; this.revision = 0; this.step = 0; this.furthestStep = 0;
+    this.render(); const heading = this.detail.querySelector('h3'); heading.tabIndex = -1; heading.focus();
+  }
+  markDirty() {
+    this.dirty = true;
+    const status = this.root.querySelector('.save-status');
+    if (status) status.textContent = 'Alterações não salvas · conclua as etapas e gere o rascunho antes de sair.';
+  }
   select(label, id, choices, value, change, required = false) {
     const wrap = node('div', '', 'field'), caption = node('label', label), input = node('select');
     caption.htmlFor = id; input.id = id; input.required = required;
     for (const [key, title] of choices) { const option = node('option', title); option.value = key; input.append(option); }
-    input.value = value; input.addEventListener('change', () => { change(input.value); if (this.intake) this.dirty = true; });
+    input.value = value; input.addEventListener('change', () => { change(input.value); if (this.intake) this.markDirty(); });
     wrap.append(caption, input); return wrap;
   }
   renderCreate() {
@@ -231,7 +251,7 @@ export class CofreWorkspace {
       if (epoch !== this.epoch || caseEpoch !== this.caseEpoch || !this.currentSession()) return;
       const row = result.data;
       if (row && (!Number.isInteger(row.revision) || row.revision < 1 || row.intake?.schema_version !== 'cofre-intake-0.1')) throw new Error('As respostas salvas não estão no formato esperado. Peça à equipe para conferir.');
-      this.revision = row?.revision || 0; this.intake = row ? clone(row.intake) : emptyCofreIntake(); this.step = 0; this.render(); this.focusHeading();
+      this.revision = row?.revision || 0; this.intake = row ? clone(row.intake) : emptyCofreIntake(); this.step = 0; this.furthestStep = 0; this.render(); this.focusHeading();
     } catch (error) {
       if (epoch !== this.epoch || caseEpoch !== this.caseEpoch) return;
       this.detail.replaceChildren(node('h3', 'Não foi possível abrir este atendimento'), node('p', error.message), this.action('Tentar abrir novamente', () => this.open(entry, { discard: true })));
@@ -244,14 +264,23 @@ export class CofreWorkspace {
     for (const [key, title] of options) {
       const caption = node('label', '', 'choice'), radio = node('input'); radio.type = 'radio'; radio.name = id; radio.value = key; radio.checked = value === key;
       if (help) radio.setAttribute('aria-describedby', id + '-hint');
-      radio.addEventListener('change', () => { if (radio.checked) { update(key); this.dirty = true; } });
+      radio.addEventListener('change', () => { if (radio.checked) { update(key); this.markDirty(); } });
       caption.append(radio, document.createTextNode(title)); fieldset.append(caption);
     } return fieldset;
   }
   renderEditor() {
     const panel = this.detail; panel.replaceChildren();
+    const oldError = this.root.querySelector('.cofre-error'); if (oldError) { oldError.hidden = true; oldError.textContent = ''; }
+    this.furthestStep = Math.max(this.furthestStep, this.step);
     const title = node('h3', this.active.client_safe_title || 'COFRE Individual'), heading = node('h4', `Etapa ${this.step + 1} de ${STEPS.length} · ${STEPS[this.step]}`, 'step-heading'); heading.tabIndex = -1;
-    panel.append(title, node('p', this.revision ? `Respostas salvas · revisão ${this.revision}. Alterações geram uma nova versão para revisão humana.` : 'Novo atendimento · as respostas ficam somente nesta sessão até gerar o rascunho.', 'muted'), heading);
+    panel.append(title, node('p', this.dirty ? 'Alterações não salvas · conclua as etapas e gere o rascunho antes de sair.' : this.revision ? `Respostas salvas · revisão ${this.revision}. Alterações geram uma nova versão para revisão humana.` : 'Novo atendimento · as respostas ficam somente nesta sessão até gerar o rascunho.', 'muted save-status'));
+    const steps = node('nav', '', 'step-navigation'); steps.setAttribute('aria-label', 'Etapas do atendimento');
+    STEPS.forEach((label, index) => {
+      const item = this.action(`${index + 1}. ${label}`, () => { this.step = index; this.renderEditor(); this.focusHeading(); });
+      item.disabled = index > this.furthestStep; item.setAttribute('aria-current', index === this.step ? 'step' : 'false');
+      steps.append(item);
+    });
+    panel.append(steps, heading);
     const progress = node('progress'); progress.max = STEPS.length; progress.value = this.step + 1; progress.setAttribute('aria-label', 'Progresso do questionário'); panel.append(progress);
     const form = node('form'), intake = this.intake, profile = intake.profile;
     const user = this.currentSession(), canEdit = this.roster.some(row => row.user_id === user?.user_id && row.member_role === 'analyst') &&
@@ -262,7 +291,7 @@ export class CofreWorkspace {
       form.append(node('p', 'Este ensaio usa somente uma pessoa e situações fictícias. As respostas geram um rascunho de diagnóstico para revisão humana. Não conectamos carteiras nem consultamos serviços externos.'));
       for (const [key, title] of [['assessment', 'Autorizo a avaliação das respostas fictícias para este diagnóstico.'], ['storage', 'Autorizo salvar as respostas fictícias e o histórico de versões neste ambiente de homologação.']]) {
         const caption = node('label', '', 'choice'), input = node('input'); input.type = 'checkbox'; input.checked = intake.consents[key] === true;
-        input.addEventListener('change', () => { intake.consents[key] = input.checked; this.dirty = true; }); caption.append(input, document.createTextNode(title)); form.append(caption);
+        input.addEventListener('change', () => { intake.consents[key] = input.checked; this.markDirty(); }); caption.append(input, document.createTextNode(title)); form.append(caption);
       }
       form.append(node('p', 'As duas autorizações são necessárias para salvar. Não há autorização de notificações ou consulta externa. A exclusão automática ainda não foi implementada neste ensaio: use apenas respostas fictícias.', 'muted'));
     } else if (this.step === 1) {
@@ -296,12 +325,12 @@ export class CofreWorkspace {
           this.select('Função', `inventory-category-${index}`, [['', 'Escolha uma função'], ...['exchange', 'vault', 'apps', 'spending', 'watch'].map(v => [v, labelFor(v)])], item.category, v => { item.category = v; }, true),
           this.select('Rede', `inventory-network-${index}`, ['unknown', 'bitcoin', 'evm', 'other'].map(v => [v, labelFor(v)]), item.network, v => { item.network = v; }),
           this.select('Quem mantém a custódia?', `inventory-custody-${index}`, ['unknown', 'self', 'third_party'].map(v => [v, labelFor(v)]), item.custody, v => { item.custody = v; }));
-        if (canEdit) block.append(this.action('Remover item ' + (index + 1), () => { intake.inventory.splice(index, 1); this.dirty = true; this.renderEditor(); this.focusHeading(); })); form.append(block);
+        if (canEdit) block.append(this.action('Remover item ' + (index + 1), () => { intake.inventory.splice(index, 1); this.markDirty(); this.renderEditor(); this.focusHeading(); })); form.append(block);
       }
       if (!intake.inventory.length) form.append(node('p', 'Nenhum item informado. Você pode continuar; essa ausência será registrada como limitação.'));
       if (canEdit && intake.inventory.length < 12) form.append(this.action('Adicionar categoria', () => {
         if (!form.reportValidity()) return;
-        this.inventoryIndex = intake.inventory.length; intake.inventory.push({ category: '', network: 'unknown', custody: 'unknown' }); this.dirty = true; this.renderEditor(); this.focusHeading();
+        this.inventoryIndex = intake.inventory.length; intake.inventory.push({ category: '', network: 'unknown', custody: 'unknown' }); this.markDirty(); this.renderEditor(); this.focusHeading();
       }));
     } else {
       form.append(node('p', 'Confira as respostas antes de gerar o diagnóstico. Salvar cria uma nova versão de rascunho; uma pessoa diferente precisa revisá-la antes da entrega.'));

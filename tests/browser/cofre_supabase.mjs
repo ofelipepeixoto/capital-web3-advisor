@@ -73,6 +73,11 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await analyst.getByLabel('Autorizo a avaliação das respostas fictícias para este diagnóstico.', { exact: true }).check();
     await analyst.getByLabel('Autorizo salvar as respostas fictícias e o histórico de versões neste ambiente de homologação.', { exact: true }).check();
     await next();
+    gate = 'navigation preserves unsaved questionnaire';
+    await analyst.getByRole('button', { name: 'Novo atendimento', exact: true }).click();
+    await analyst.getByRole('button', { name: 'Continuar preenchendo', exact: true }).click();
+    await analyst.getByRole('heading', { name: 'Etapa 2 de 8 · Objetivos', exact: true }).waitFor();
+    expect(await analyst.getByRole('button', { name: '8. Revisar e gerar', exact: true }).isDisabled(), 'unreached stages cannot bypass questionnaire gates');
     gate = 'profile and liquidity wizard';
     await analyst.locator('#cofre-objective').selectOption('protect_family');
     await analyst.locator('#cofre-experience').selectOption('beginner');
@@ -100,6 +105,9 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await analyst.getByRole('heading', { name: 'Etapa 8 de 8 · Revisar e gerar', exact: true }).waitFor();
     expect(await analyst.locator('#cases-panel input[type="text"], #cases-panel textarea').count() === 0,
       'synthetic wizard collects no free text, balances or wallet addresses');
+    await analyst.getByRole('button', { name: '2. Objetivos', exact: true }).click();
+    expect(await analyst.locator('#cofre-objective').inputValue() === 'protect_family', 'stage navigation preserves the entered objective');
+    await analyst.getByRole('button', { name: '8. Revisar e gerar', exact: true }).click();
     gate = 'save actual intake and server-generated report';
     await analyst.getByRole('button', { name: 'Salvar respostas e gerar rascunho', exact: true }).click();
     await analyst.getByText('Respostas salvas. O novo diagnóstico é um rascunho pendente de revisão humana.', { exact: true }).waitFor();
@@ -144,6 +152,13 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
       local: localStorage.length, session: sessionStorage.length }));
     expect(!shape.overflow && shape.local === 0 && shape.session === 0,
       'mobile report fits viewport and credentials are not persisted');
+    await client.getByRole('button', { name: 'Voltar à lista de diagnósticos', exact: true }).click();
+    expect(await client.locator('[data-version="' + saved.report_version_id + '"]').evaluate(el => el === document.activeElement), 'mobile return focuses the selected report in its list');
+    await client.locator('[data-version="' + saved.report_version_id + '"]').click();
+    await client.locator('#detail .cofre-report').waitFor();
+    await client.getByText('Ir para uma seção do diagnóstico', { exact: true }).click();
+    await client.getByRole('link', { name: 'Plano de ação para revisão', exact: true }).click();
+    expect(await client.locator('#detail h3').filter({ hasText: 'Plano de ação para revisão' }).evaluate(el => el === document.activeElement), 'report section navigation moves keyboard focus');
     gate = 'authorized print revalidation';
     await client.evaluate(() => { window.__cofrePrintCalls = 0; window.print = () => { window.__cofrePrintCalls += 1; }; });
     await client.getByRole('button', { name: 'Salvar / imprimir PDF', exact: true }).click();
