@@ -31,6 +31,11 @@ export async function runAuthControlsIntegration({ status, sql, pass, requireCon
   requireCondition(typeof status.SERVICE_ROLE_KEY === 'string' && typeof status.ANON_KEY === 'string', 'Auth controls require private local keys');
   requireCondition(totpCode('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 59000) === '287082', 'TOTP computation matches RFC 6238 test vector');
   let gate = 'initialize';
+  let lastHttpStatus = null, lastAuthCode = 'none';
+  const publicAuthCodes = new Set(['mfa_totp_enroll_not_enabled', 'mfa_totp_verify_not_enabled',
+    'mfa_verification_failed', 'mfa_challenge_expired', 'mfa_factor_not_found', 'over_request_rate_limit',
+    'over_email_send_rate_limit', 'session_not_found', 'otp_expired', 'invalid_credentials',
+    'validation_failed', 'unexpected_failure', 'weak_password']);
   const logoutTokens = new Set();
   const local = async (path, { method = 'GET', body, token, admin = false, profile = false } = {}) => {
     requireCondition(/^\/(auth|rest)\/v1\//.test(path), 'Auth controls use fixed local paths');
@@ -42,8 +47,13 @@ export async function runAuthControlsIntegration({ status, sql, pass, requireCon
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }); } catch { requireCondition(false, 'Auth controls local request available at ' + gate); }
+    lastHttpStatus = response.status; lastAuthCode = 'none';
     if (response.status === 204) return { status: 204, body: null };
     let data; try { data = await response.json(); } catch { requireCondition(false, 'Auth controls local JSON valid at ' + gate); }
+    if (response.status >= 400) {
+      const code = data?.error_code || data?.code;
+      lastAuthCode = publicAuthCodes.has(code) ? code : 'other';
+    }
     return { status: response.status, body: data };
   };
   const api = async (token, path, body) => {
@@ -53,6 +63,7 @@ export async function runAuthControlsIntegration({ status, sql, pass, requireCon
         ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })); } catch { requireCondition(false, 'Auth controls actual API handler responds at ' + gate); }
+    lastHttpStatus = response.status; lastAuthCode = 'none';
     let data; try { data = await response.json(); } catch { requireCondition(false, 'Auth controls API JSON valid at ' + gate); }
     return { status: response.status, body: data };
   };
@@ -251,6 +262,11 @@ commit;`);
     }
     console.log('AUTH CONTROLS LOCAL: real TOTP/AAL2, recovery and invite token exchange passed; no email delivery or cloud validation.');
     return { workspaceId, staffId: staff.id, caseId, reportVersionId: saved.body.data.report_version_id };
+  } catch {
+    // Fixed gate, HTTP status, and a closed list of provider codes are safe to
+    // retain. Never emit the error message, response body, QR, secret or tokens.
+    console.log('AUTH CONTROLS DIAGNOSTIC ' + JSON.stringify({ gate, status: lastHttpStatus, code: lastAuthCode }));
+    requireCondition(false, 'Auth controls integration failed at ' + gate);
   } finally {
     // Disposable local fixture sessions only. Cleanup failures never expose errors.
     for (const token of logoutTokens) { try { await local('/auth/v1/logout?scope=local', { method: 'POST', token, body: {} }); } catch { /* teardown owns the disposable stack */ } }

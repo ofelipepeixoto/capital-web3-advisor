@@ -102,7 +102,12 @@ jobs:
           old = 'schemas = ["public", "graphql_public"]'
           if content.count(old) != 1:
               raise SystemExit('Unexpected CLI exposed-schema defaults; review before changing')
-          p.write_text(content.replace(old, 'schemas = ["public", "graphql_public", "capital_web3"]'))
+          content = content.replace(old, 'schemas = ["public", "graphql_public", "capital_web3"]')
+          old_totp = '[auth.mfa.totp]\nenroll_enabled = false\nverify_enabled = false'
+          if content.count(old_totp) != 1:
+              raise SystemExit('Unexpected CLI TOTP defaults; review before changing')
+          content = content.replace(old_totp, '[auth.mfa.totp]\nenroll_enabled = true\nverify_enabled = true')
+          p.write_text(content)
           PYCONFIG
           supabase migration new unrelated_neighbor_fixture
           sleep 1
