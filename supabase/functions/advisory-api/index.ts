@@ -190,7 +190,12 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         return respond(204, null);
       }
       const url = new URL(request.url);
-      const path = url.pathname.startsWith(PREFIX + "/") ? url.pathname.slice(PREFIX.length) : url.pathname;
+      // Hosted Edge forwards /advisory-api/... to Deno, while local tests may
+      // present the full gateway path. Normalize both before routing.
+      const hostedPrefix = "/advisory-api";
+      const path = url.pathname.startsWith(PREFIX + "/") ? url.pathname.slice(PREFIX.length)
+        : url.pathname.startsWith(hostedPrefix + "/") ? url.pathname.slice(hostedPrefix.length)
+        : url.pathname;
       if (url.search) throw new ApiError(400, "invalid_request");
       if (request.method === "GET" && path === "/health") {
         return respond(200, { status: "configured", mode: "synthetic-staging", request_id: requestId });
