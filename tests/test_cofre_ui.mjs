@@ -165,3 +165,34 @@ test('case creation chooses only provisioned workspace clients and refreshes ass
   const post = requests.find(request => request.body); assert.equal(post.path, '/cofre/cases'); assert.equal(post.body.client_user_id, 'client-a'); assert.equal(post.body.workspace_id, 'workspace-a');
   assert.equal(h.ui.active.id, entry.id); assert.equal(h.ui.step, 0);
 });
+
+test('new attendance preserves unsaved answers until an explicit discard', async () => {
+  const h = harness(); await h.ui.load(roster); await h.ui.open(entry);
+  h.ui.intake.profile.objective = 'protect_family'; h.ui.markDirty();
+  await button(h.root, 'Novo atendimento').click();
+  assert.equal(h.ui.active.id, entry.id); assert.equal(h.ui.intake.profile.objective, 'protect_family');
+  await button(h.root, 'Continuar preenchendo').click();
+  assert.equal(h.ui.intake.profile.objective, 'protect_family'); assert.equal(focused.className, 'step-heading');
+  const oldCreationKey = h.ui.key('/cofre/cases', { workspace_id: 'workspace-a', client_user_id: 'client-a' });
+  await button(h.root, 'Novo atendimento').click();
+  await button(h.root, 'Descartar alterações e iniciar novo atendimento').click();
+  assert.notEqual(h.ui.key('/cofre/cases', { workspace_id: 'workspace-a', client_user_id: 'client-a' }), oldCreationKey, 'a deliberate new attendance starts a distinct creation operation');
+  assert.equal(h.ui.active, null); assert.equal(h.ui.intake, null); assert.equal(h.ui.dirty, false);
+  assert.ok(button(h.root, 'Criar atendimento fictício')); assert.equal(focused.textContent, 'Abrir um caso fictício');
+});
+
+test('stage shortcuts revisit reached steps without losing data or skipping initial gates', async () => {
+  const h = harness(); await h.ui.load(roster); await h.ui.open(entry);
+  assert.equal(button(h.root, '8. Revisar e gerar').disabled, true);
+  await button(h.root, '2. Objetivos').click(); assert.equal(h.ui.step, 0);
+  for (const input of h.root.querySelectorAll('input')) { input.checked = true; input.handlers.change(); }
+  assert.ok(h.root.querySelector('.save-status').textContent.includes('Alterações não salvas'));
+  await button(h.root, 'Continuar').click();
+  change(field(h.root, 'cofre-objective'), 'organize'); change(field(h.root, 'cofre-experience'), 'beginner');
+  await button(h.root, 'Continuar').click();
+  await button(h.root, '1. Consentimento').click(); assert.equal(h.ui.step, 0);
+  await button(h.root, '3. Horizonte e perdas').click(); assert.equal(h.ui.step, 2);
+  assert.equal(h.ui.intake.profile.objective, 'organize');
+  assert.equal(button(h.root, '3. Horizonte e perdas').attributes['aria-current'], 'step');
+  assert.equal(button(h.root, '4. Recuperação').disabled, true);
+});
