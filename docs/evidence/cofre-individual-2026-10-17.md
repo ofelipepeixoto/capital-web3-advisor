@@ -64,7 +64,10 @@ nesses arquivos. Foram inspecionados os screenshots móvel e desktop.
   encerradas após o ensaio. Usuários referenciados na auditoria foram preservados;
   suas senhas não foram escritas em arquivo, commit ou evidência pública.
 
-![Rascunho salvo no portal hospedado, exclusivamente fictício](images/cofre-live-draft-2026-10-17.jpg)
+Uma captura visual confirmou o rascunho salvo no portal hospedado. A imagem
+fictícia acompanha a entrega ao titular; fica fora da árvore de código, cuja
+verificação pública exige arquivos de texto. Os screenshots reproduzíveis da
+CI continuam no artifact indicado acima.
 
 ### Preservação e avisos do Supabase
 
