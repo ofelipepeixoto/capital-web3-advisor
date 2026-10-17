@@ -8,6 +8,11 @@ const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const CANONICAL = 'https://capital.camaleaoweb3.com.br/';
 const GENERIC = 'Não foi possível concluir esta etapa. Confira os dados ou solicite um novo link.';
 const RECOVERY = 'Se houver uma conta elegível para esse e-mail, você receberá as instruções de recuperação.';
+const MAX_QR_DOCUMENT_BYTES = 1024 * 1024;
+// GoTrue's goqrsvg renderer writes one <rect> per QR cell, including white cells.
+// A normal URI can therefore exceed 200 KB. Keep the SVG document bounded to 1 MiB,
+// below the existing 2 MiB HTTP envelope; URI encoding uses at most 3 chars/UTF-8 byte.
+export const MAX_TOTP_QR_IMAGE_LENGTH = 3 * MAX_QR_DOCUMENT_BYTES + 64;
 const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 function invalid(message = GENERIC) { throw new Error(message); }
 function factorId(value) {
@@ -33,6 +38,38 @@ function tokenExpiry(token, now) {
   if (!Number.isSafeInteger(payload.exp) || payload.exp * 1000 <= now ||
       payload.role !== 'authenticated' || !UUID.test(payload.sub || '')) invalid();
   return Math.floor((payload.exp * 1000 - now) / 1000);
+}
+function qrImage(value) {
+  if (typeof value !== 'string' || value.length > MAX_TOTP_QR_IMAGE_LENGTH) invalid();
+  let source = value;
+  if (source.startsWith('data:')) {
+    // Accept only an SVG image payload, never an external image or HTML data URL.
+    const encoded = source.match(/^data:image\/svg\+xml(?:(?:;charset=utf-8)|(?:;utf-8))?(;base64)?,([\s\S]*)$/i);
+    if (!encoded) invalid();
+    try {
+      if (encoded[1]) {
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded[2])) invalid();
+        const bytes = Uint8Array.from(atob(encoded[2]), (character) => character.charCodeAt(0));
+        source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } else source = encoded[2].trimStart().startsWith('<') ? encoded[2] : decodeURIComponent(encoded[2]);
+    } catch { return invalid(); }
+  }
+  if (source.length > MAX_QR_DOCUMENT_BYTES || new TextEncoder().encode(source).byteLength > MAX_QR_DOCUMENT_BYTES) invalid();
+  let root = source.replace(/^\uFEFF/, '').trimStart();
+  // GoTrue uses svgo, whose output starts with an XML declaration and generator comment.
+  // Accept that bounded document preamble while still requiring one SVG document root.
+  const xml = root.match(/^<\?xml\s+version=["']1\.[01]["'](?:\s+encoding=["']utf-8["'])?(?:\s+standalone=["'](?:yes|no)["'])?\s*\?>\s*/i);
+  if (xml) root = root.slice(xml[0].length);
+  let commentCount = 0;
+  while (root.startsWith('<!--')) {
+    const comment = root.match(/^<!--[\s\S]*?-->\s*/);
+    if (!comment || comment[0].length > 2048 || ++commentCount > 4) invalid();
+    root = root.slice(comment[0].length);
+  }
+  if (!/^(?:<svg\b[^>]*>[\s\S]*<\/svg\s*>|<svg\b[^>]*\/>)\s*$/i.test(root) ||
+      /<!DOCTYPE|<!ENTITY|<\?|<(?:script|foreignObject|iframe|object|embed|image|use|a)\b|\son[a-z]+\s*=|(?:\s|:)href\s*=|url\s*\(/i.test(root)) invalid();
+  // Consumers receive an <img> source, never markup to insert in the page DOM.
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(root);
 }
 
 /** Remove the fragment before rendering, fetching config or examining its contents.
@@ -112,14 +149,13 @@ export function createAuthControls({ request, onSession = () => {} } = {}) {
       const response = await call('/auth/v1/factors', { method: 'POST',
         body: { factor_type: 'totp', friendly_name: 'Capital Web3' } });
       if (!plain(response) || !plain(response.totp) ||
-          typeof response.totp.secret !== 'string' || !/^[A-Z2-7]{16,128}$/.test(response.totp.secret) ||
-          typeof response.totp.qr_code !== 'string' || response.totp.qr_code.length > 200000 ||
-          !/^(?:\s*<svg\b|data:image\/svg\+xml[;,])/.test(response.totp.qr_code)) invalid();
+          typeof response.totp.secret !== 'string' || !/^[A-Z2-7]{16,128}$/.test(response.totp.secret)) invalid();
+      const qrCode = qrImage(response.totp.qr_code);
       let uri;
       try { uri = new URL(response.totp.uri); } catch { return invalid(); }
       if (uri.protocol !== 'otpauth:' || uri.hostname !== 'totp' ||
           uri.searchParams.get('secret') !== response.totp.secret) invalid();
-      return { id: factorId(response.id), totp: { qr_code: response.totp.qr_code,
+      return { id: factorId(response.id), totp: { qr_code: qrCode,
         secret: response.totp.secret, uri: response.totp.uri } };
     },
     async verifyTOTP(id, code) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AuthControlsUI, OFFICIAL_PORTAL_ORIGIN } from '../apps/staging/auth-controls-ui.mjs';
+import { MAX_TOTP_QR_IMAGE_LENGTH } from '../apps/staging/auth-controls.mjs';
 
 // Interaction and lifecycle checks with a minimal DOM, not visual browser validation.
 class Element {
@@ -43,6 +44,15 @@ test('enrollment requires an explicit choice, QR stays an image and secret disap
   code.value = '12345'; await button(h.root, 'Confirmar código').click(); assert.equal(h.calls.length, 0); assert.ok(h.root.textContent.includes('exatamente os 6 dígitos')); assert.equal(focused.attributes.role, 'alert');
   code.value = '123456'; await button(h.root, 'Confirmar código').click(); assert.deepEqual(h.calls, [['verify', 'factor-a', '123456']]); assert.deepEqual(h.completed, ['mfa']);
   assert.equal(h.root.hidden, true); assert.equal(h.root.textContent, ''); assert.equal(code.value, '');
+});
+
+test('a valid canonical QR larger than 150k remains an image within the shared bound', async () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg">' + '<rect width="1" height="1"/>'.repeat(9000) + '</svg>';
+  const qr = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  assert.ok(qr.length > 150000); assert.ok(qr.length < MAX_TOTP_QR_IMAGE_LENGTH);
+  const h = harness({ enrollTOTP: async () => ({ ...enrollment, totp: { ...enrollment.totp, qr_code: qr } }) });
+  await h.ui.startMfa(); await button(h.root, 'Configurar autenticador').click();
+  assert.equal(h.root.querySelectorAll('img')[0].src, qr); assert.equal(h.root.querySelectorAll('svg').length, 0);
 });
 
 test('an existing factor uses verification without displaying enrollment material and errors stay generic', async () => {

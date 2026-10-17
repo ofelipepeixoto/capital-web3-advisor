@@ -272,7 +272,9 @@ try {
       : 'Senha salva, mas o servidor não confirmou o encerramento da sessão temporária. Entre novamente e peça apoio à equipe se o aviso continuar.'); },
     onCancel: async () => { try { await client.logout(); } catch { client.clear(); } },
   });
-  $('recover').disabled = false; $('login').disabled = false;
+  // Hosted redirect allowlist and actual email delivery are separate release gates.
+  // Keep self-service requests unavailable until both have been verified.
+  $('recover').disabled = true; $('login').disabled = false;
   $('recover').addEventListener('click', () => { if (busy) return; $('login-panel').hidden = true; authUI.showRecoveryRequest(); });
   if (accessLink || accessLinkError) {
     $('login-panel').hidden = true; authUI.startAccessLink(accessLink); accessLink = null;

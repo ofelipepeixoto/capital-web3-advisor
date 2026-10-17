@@ -1,4 +1,5 @@
 /** Account controls only. Auth/RLS decide identity, assurance and all product access. */
+import { MAX_TOTP_QR_IMAGE_LENGTH } from './auth-controls.mjs';
 export const OFFICIAL_PORTAL_ORIGIN = 'https://capital.camaleaoweb3.com.br';
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_MAX_LENGTH = 128;
@@ -11,7 +12,7 @@ function field(label, id, type, options = {}) {
   Object.assign(input, options); wrapper.append(caption, input); return { wrapper, input };
 }
 function enrollmentQr(value) {
-  if (typeof value !== 'string' || value.length > 150000) return null;
+  if (typeof value !== 'string' || value.length > MAX_TOTP_QR_IMAGE_LENGTH) return null;
   // SVG is loaded only as an image, never inserted into the DOM as markup.
   if (value.startsWith('data:image/svg+xml;')) return value;
   if (/^\s*<svg[\s>]/i.test(value)) return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(value);

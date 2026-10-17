@@ -32,6 +32,7 @@ export async function runAuthControlsIntegration({ status, sql, pass, requireCon
   requireCondition(totpCode('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 59000) === '287082', 'TOTP computation matches RFC 6238 test vector');
   let gate = 'initialize';
   let lastHttpStatus = null, lastAuthCode = 'none';
+  let enrollmentShape = null;
   const publicAuthCodes = new Set(['mfa_totp_enroll_not_enabled', 'mfa_totp_verify_not_enabled',
     'mfa_verification_failed', 'mfa_challenge_expired', 'mfa_factor_not_found', 'over_request_rate_limit',
     'over_email_send_rate_limit', 'session_not_found', 'otp_expired', 'invalid_credentials',
@@ -50,6 +51,19 @@ export async function runAuthControlsIntegration({ status, sql, pass, requireCon
     lastHttpStatus = response.status; lastAuthCode = 'none';
     if (response.status === 204) return { status: 204, body: null };
     let data; try { data = await response.json(); } catch { requireCondition(false, 'Auth controls local JSON valid at ' + gate); }
+    if (path === '/auth/v1/factors' && method === 'POST' && response.status === 200) {
+      let uri; try { uri = new URL(data?.totp?.uri); } catch { /* report booleans only */ }
+      const qr = data?.totp?.qr_code, secret = data?.totp?.secret;
+      enrollmentShape = { id_uuid: UUID.test(data?.id), totp_object: data?.totp !== null && typeof data?.totp === 'object',
+        secret_length: typeof secret === 'string' ? secret.length : null,
+        secret_base32: typeof secret === 'string' && /^[A-Z2-7]{16,128}$/.test(secret),
+        qr_length: typeof qr === 'string' ? qr.length : null,
+        qr_svg_first: typeof qr === 'string' && /^\s*<svg\b/.test(qr),
+        qr_xml_first: typeof qr === 'string' && /^\s*<\?xml\b/.test(qr),
+        qr_svg_data: typeof qr === 'string' && /^data:image\/svg\+xml[;,]/.test(qr),
+        uri_otpauth: uri?.protocol === 'otpauth:', uri_totp: uri?.hostname === 'totp',
+        uri_secret_matches: typeof secret === 'string' && uri?.searchParams.get('secret') === secret };
+    }
     if (response.status >= 400) {
       const code = data?.error_code || data?.code;
       lastAuthCode = publicAuthCodes.has(code) ? code : 'other';
@@ -265,7 +279,7 @@ commit;`);
   } catch {
     // Fixed gate, HTTP status, and a closed list of provider codes are safe to
     // retain. Never emit the error message, response body, QR, secret or tokens.
-    console.log('AUTH CONTROLS DIAGNOSTIC ' + JSON.stringify({ gate, status: lastHttpStatus, code: lastAuthCode }));
+    console.log('AUTH CONTROLS DIAGNOSTIC ' + JSON.stringify({ gate, status: lastHttpStatus, code: lastAuthCode, enrollment_shape: enrollmentShape }));
     requireCondition(false, 'Auth controls integration failed at ' + gate);
   } finally {
     // Disposable local fixture sessions only. Cleanup failures never expose errors.

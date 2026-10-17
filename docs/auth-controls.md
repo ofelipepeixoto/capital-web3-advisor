@@ -30,7 +30,9 @@ do host precisam ser verificados separadamente; a meta CSP não os implementa.
 
 ## Convites e e-mail
 
-A interface recebe links de convite e oferece recuperação. O envio de convites
+A interface recebe links de convite e implementa recuperação. O botão de envio
+de recuperação permanece desabilitado na publicação até validar a URL e a entrega
+real de e-mail; o teste local da capacidade não habilita esse envio. O envio de convites
 e o roster continuam administrativos; não há cadastro público de papéis.
 Antes de convidar pessoas reais, confirmar no Auth compartilhado:
 
