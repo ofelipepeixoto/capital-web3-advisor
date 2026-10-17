@@ -4,8 +4,9 @@ Base pública de desenvolvimento para a **ferramenta interna de consultoria da
 Capital Web3**, com um **portal privado de entrega de diagnósticos** aos clientes.
 O cliente recebe a análise revisada e escolhe o que implementar.
 
-**Estado: homologação técnica descartável aprovada, com dados inteiramente fictícios.**
-O piloto privado na nuvem permanece pendente dos gates de implantação.
+**Estado: homologação sintética na nuvem, com dados inteiramente fictícios.**
+O fluxo hospedado foi exercitado com Auth, RLS, Edge e portal; o piloto com
+clientes e a prontidão de produção permanecem pendentes.
 Não recebe fundos, assina transações ou opera posições. Nenhum cliente, documento
 privado do anexo ou segredo foi publicado. A visibilidade pública deste código
 não torna públicos os futuros diagnósticos.
@@ -15,8 +16,11 @@ não torna públicos os futuros diagnósticos.
 O titular escolheu o projeto existente `radar-disruptivo`. A adaptação usa os
 schemas `capital_web3` e `capital_web3_private`, com Auth e cotas compartilhados.
 Consulte [plano e limites do staging Free](docs/free-shared-staging.md).
-A fundação de banco/Storage foi implantada e verificada. Exposição do schema,
-Edge e portal hospedados continuam pendentes; ver o manifesto no roteiro.
+A fundação de banco/Storage foi implantada e verificada. Edge v2 e Site v2 foram
+exercitados em [homologação sintética na nuvem](docs/evidence/cloud-staging-2026-10-17.md).
+O domínio [capital.camaleaoweb3.com.br](https://capital.camaleaoweb3.com.br/)
+está ativo com SSL no Sites e aponta para esse Site. É um endereço de
+homologação, não um convite para inserir dados reais ou uma validação de piloto.
 
 ## Testar
 
@@ -57,7 +61,7 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | `capital_web3/risk.py` | NAV, dívida, concentração, stress, IL e CLAMM com Decimal |
 | `capital_web3/service.py` | Casos, autorização por objeto e revisão/publicação por versão |
 | `capital_web3/server.py`, `apps/web/` | API local e console/portal de demonstração |
-| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth Supabase e bundle estático; implantação pendente |
+| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth Supabase e bundle estático; Site v2 de homologação publicado |
 | `capital_web3/adapters.py`, `contracts/` | Relatório fictício e contratos; OpenAI real bloqueada |
 | `capital_web3/mcp.py` | Exemplo MCP local por stdio, com ferramentas de leitura |
 | `supabase/` | RLS, workflow humano persistente e API Edge autenticada |
@@ -74,9 +78,9 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | Cálculos/API/portal local | Implementados; verificar `docs/testing.md` para resultados |
 | OpenAI API | Adapter fictício; consumo pago desativado |
 | MCP | Exemplo local de protocolo; não é servidor remoto homologado |
-| Supabase | Fundação Free compartilhada implantada; API/portal hospedados ainda pendentes |
+| Supabase | Fundação Free compartilhada e Edge v2 hospedadas; fluxo sintético com Auth/RLS registrado, sem piloto real |
 | n8n | JSONs inativos; importação/execução na instância ainda não realizada |
-| Sites | Interface reaproveitável e roteiro; nenhum Site publicado |
+| Sites | Site v2 publicado no domínio de homologação acima; política de acesso do Sites atualmente `public`, sem validação de uso por clientes |
 | Hostinger | Roteiro de staging; nenhum serviço/VPS alterado |
 
 ## Plano e evolução
@@ -86,7 +90,9 @@ Leia [arquitetura](docs/architecture.md), [backlog](docs/backlog.md),
 [staging](docs/staging.md), [testes](docs/testing.md) e
 [homologação técnica e gates](docs/homologation.md).
 O [portal autenticado para staging](docs/authenticated-staging.md) tem login
-Supabase e bundle próprio; segue o roteiro Free compartilhado acima.
+Supabase e bundle próprio; segue o roteiro Free compartilhado acima. A
+[homologação sintética em nuvem](docs/evidence/cloud-staging-2026-10-17.md)
+documenta o que foi exercitado e o que ainda falta antes de um piloto externo.
 Começamos por uma fatia executável de revisão e entrega. Integrações financeiras
 reais, autenticação de produção, conexão das automações e monitoramento dependem
 dos gates descritos nos documentos.

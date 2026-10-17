@@ -16,11 +16,16 @@ e os outros namespaces do projeto não receberam atribuições Capital.
   `/advisory-api/...`; o handler agora normaliza esse prefixo e o caminho
   completo do gateway. `ADVISORY_ALLOWED_ORIGINS` contém somente a origem
   HTTPS do portal, sem alterar os segredos das outras aplicações.
-- Site v2 privado para o proprietário:
+- Site v2 publicado. O domínio
+  <https://capital.camaleaoweb3.com.br/> está ativo com SSL e aponta para o
+  Site; a URL gerada é
   <https://capital-web3-staging.radarjacarepagua.chatgpt.site>.
   O repositório de origem do Site está em `bce454450956d3211843e69442bf36ed376b599e`.
   A versão empacota a configuração pública em `config.mjs` para carregar no
-  ambiente Sites privado; não contém chave secreta ou token de usuário.
+  ambiente Sites; não contém chave secreta ou token de usuário. A consulta
+  atual ao Sites retornou `access_mode=public`. Esse estado
+  de acesso não foi parte do fluxo de homologação descrito abaixo; a
+  autenticação e autorização de dados continuam responsabilidade do Auth/RLS/API.
 
 ## Execução com Auth real
 
@@ -51,9 +56,11 @@ usados somente em memória da sessão de homologação, sem registro neste repo.
 
 ## Limites antes de piloto com clientes
 
-- O Site está acessível somente ao proprietário. Acesso de clientes, convites,
-  MFA, revogação estrita de sessões/JWTs e recuperação de contas não foram
-  homologados.
+- A política atual do Sites é `public`; a afirmação anterior de acesso apenas
+  pelo proprietário não descreve o estado atual. Uma página
+  acessível não prova que contas de clientes estejam habilitadas a consultar
+  casos. Acesso de clientes, convites, MFA, revogação estrita de sessões/JWTs
+  e recuperação de contas não foram homologados.
 - Cadastro público do Auth está **ativado** no projeto compartilhado, com
   confirmação de e-mail. Desativá-lo afetaria as outras aplicações; requer
   decisão de isolamento/autenticação antes de usar contas de clientes.
