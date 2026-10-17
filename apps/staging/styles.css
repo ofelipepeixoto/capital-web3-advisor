@@ -5,3 +5,13 @@
 .auth-error{color:#ffb4b4;border-left:3px solid currentColor;padding-left:12px}
 #auth-controls code{overflow-wrap:anywhere;user-select:all}
 @media print{#auth-controls{display:none!important}}
+.report-navigation{padding:14px 16px;margin:16px 0 24px;background:#1d3047;border:1px solid #526b8c;border-radius:8px}
+.report-navigation-links{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:8px}
+.report-navigation a{color:#83ead4;text-underline-offset:3px;padding:4px 0}
+.report-navigation a:focus-visible{outline:3px solid #f2cd80;outline-offset:3px}
+#reports button[aria-pressed=true]{border-color:#6ae0c6;background:#234a49}
+#detail h2:focus{outline:none}
+#detail h2:focus-visible{outline:3px solid #f2cd80;outline-offset:4px}
+@media(max-width:740px){.report-navigation-links{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}}
+@media(max-width:420px){.report-navigation-links{grid-template-columns:1fr}}
+@media print{.report-navigation{display:none!important}}
