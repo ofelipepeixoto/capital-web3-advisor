@@ -15,7 +15,7 @@ try {
   const output = resolve(root, 'dist/staging');
   await rm(output + '/public', { recursive: true, force: true });
   await mkdir(output + '/public', { recursive: true });
-  for (const name of ['index.html', 'styles.css', 'app.mjs', 'client.mjs', 'cofre-ui.mjs']) await copyFile(root + '/apps/staging/' + name, output + '/public/' + name);
+  for (const name of ['index.html', 'styles.css', 'app.mjs', 'client.mjs', 'cofre-ui.mjs', 'auth-controls.mjs', 'auth-controls-ui.mjs']) await copyFile(root + '/apps/staging/' + name, output + '/public/' + name);
   await writeFile(output + '/public/config.json', JSON.stringify(config, null, 2) + '\n');
   await writeFile(output + '/Caddyfile', `${parsed.hostname} {
   root * /srv/capital-web3-portal/public
@@ -26,7 +26,7 @@ try {
     Referrer-Policy "no-referrer"
     X-Frame-Options "DENY"
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ${valid.base}; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ${valid.base}; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
   }
   file_server
 }

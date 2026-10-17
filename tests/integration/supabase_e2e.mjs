@@ -252,6 +252,8 @@ notify pgrst,'reload schema';`;
   };
   const { runCofreIntegration } = await import('./cofre_e2e.mjs');
   await runCofreIntegration({status,users,result,sql,pass,requireCondition,handler,origin});
+  const { runAuthControlsIntegration } = await import('./auth_controls_e2e.mjs');
+  await runAuthControlsIntegration({status,users,sql,pass,requireCondition,handler,origin});
   console.log("Edge deployment, cloud staging and production approval remain unvalidated.");
 }
 

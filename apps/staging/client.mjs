@@ -35,14 +35,14 @@ export class PortalClient {
     ++this.#epoch; this.#token = null; this.#expires = 0;
     clearTimeout(this.#timer); this.onEnd();
   }
-  async #request(path, { body, token } = {}) {
+  async #request(path, { body, token, method = body === undefined ? 'GET' : 'POST' } = {}) {
     let response;
     try {
       // Browser fetch is a Web API, not a method of PortalClient. Preserve its
       // unbound call semantics; Node's fetch and injected mocks hide this issue.
       const fetchRequest = this.fetcher;
       response = await fetchRequest(this.config.base + path, {
-        method: body === undefined ? 'GET' : 'POST', credentials: 'omit',
+        method, credentials: 'omit',
         redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(12000),
         headers: { apikey: this.config.key, ...(token ? { Authorization: 'Bearer ' + token } : {}),
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
@@ -73,6 +73,37 @@ export class PortalClient {
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
     catch { throw new Error('Resposta inválida do serviço.'); }
   }
+  adoptSession(data) {
+    if (!data || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(data.access_token) ||
+        !Number.isFinite(data.expires_in) || data.expires_in <= 0) throw new Error('Sessão inválida.');
+    ++this.#epoch; clearTimeout(this.#timer);
+    this.#token = data.access_token;
+    // The refresh token is deliberately discarded, including after MFA.
+    const duration = Math.min(data.expires_in * 1000, 3600000);
+    this.#expires = this.clock() + duration;
+    this.#timer = setTimeout(() => this.clear(), duration); this.#timer.unref?.();
+  }
+  async authRequest(path, { method = 'GET', body, token } = {}) {
+    const recovery = /^\/auth\/v1\/recover\?redirect_to=[A-Za-z0-9%._~-]+$/.test(path) && method === 'POST';
+    const allowed = recovery || (path === '/auth/v1/user' && ['GET', 'PUT'].includes(method)) ||
+      (path === '/auth/v1/logout?scope=local' && method === 'POST') ||
+      (method === 'DELETE' && /^\/auth\/v1\/factors\/[0-9a-f-]{36}$/.test(path)) ||
+      (method === 'POST' && (path === '/auth/v1/factors' ||
+      /^\/auth\/v1\/factors\/[0-9a-f-]{36}\/(?:challenge|verify)$/.test(path)));
+    if (!allowed) throw new Error('Rota de acesso inválida.');
+    const selected = token === undefined ? this.#token : token;
+    if ((recovery && selected !== null) || (!recovery &&
+      (typeof selected !== 'string' || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(selected)))) {
+      throw new Error('Sessão inválida. Entre novamente.');
+    }
+    if (!recovery && token === undefined && this.clock() >= this.#expires) {
+      this.clear(); throw new Error('Sessão encerrada. Entre novamente.');
+    }
+    const epoch = this.#epoch;
+    const result = await this.#request(path, { method, body, token: selected });
+    if (epoch !== this.#epoch) throw new Error('Sessão alterada.');
+    return result;
+  }
   async login(email, password) {
     this.clear(); const epoch = this.#epoch;
     let data;
@@ -84,16 +115,12 @@ export class PortalClient {
     if (epoch !== this.#epoch) throw new Error('Entrada cancelada.');
     if (!data || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(data.access_token) ||
         !Number.isFinite(data.expires_in) || data.expires_in <= 0) throw new Error('Sessão inválida.');
-    this.#token = data.access_token;
-    // No refresh token, localStorage, sessionStorage or automatic login restoration.
-    const duration = Math.min(data.expires_in * 1000, 3600000);
-    this.#expires = this.clock() + duration;
-    this.#timer = setTimeout(() => this.clear(), duration); this.#timer.unref?.();
+    this.adoptSession(data); const activeEpoch = this.#epoch;
     try { return await this.api('/session'); }
-    catch (error) { if (epoch === this.#epoch) this.clear(); throw error; }
+    catch (error) { if (activeEpoch === this.#epoch) this.clear(); throw error; }
   }
   async api(path, body) {
-    if (!/^\/(?:session|cases|reports|publications|cofre)(?:\/[a-zA-Z0-9-]+)*$/.test(path)) throw new Error('Rota inválida.');
+    if (!/^\/(?:session|access-requirements|cases|reports|publications|cofre)(?:\/[a-zA-Z0-9-]+)*$/.test(path)) throw new Error('Rota inválida.');
     if (!this.#token || this.clock() >= this.#expires) { this.clear(); throw new Error('Sessão encerrada. Entre novamente.'); }
     const epoch = this.#epoch;
     try {

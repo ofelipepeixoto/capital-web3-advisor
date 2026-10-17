@@ -25,8 +25,8 @@ export async function runCofreIntegration({ status, users, result, sql, pass, re
   const workspaceA = randomUUID(), workspaceB = randomUUID();
   // Only crypto/server UUIDs and constant fictitious labels enter controlled SQL.
   await sql(`begin;
-insert into capital_web3_private.cofre_workspaces(id,label) values
-('${workspaceA}','COFRE synthetic primary'),('${workspaceB}','COFRE synthetic foreign');
+insert into capital_web3_private.cofre_workspaces(id,label,staff_mfa_required) values
+('${workspaceA}','COFRE synthetic primary',false),('${workspaceB}','COFRE synthetic foreign',false);
 insert into capital_web3_private.cofre_workspace_members(workspace_id,user_id,display_name,member_role) values
 ('${workspaceA}','${users.ana.id}','Analista fictícia','analyst'),
 ('${workspaceA}','${users.rui.id}','Revisor fictício','reviewer'),

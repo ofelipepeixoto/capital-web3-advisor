@@ -1,10 +1,16 @@
 import { PortalClient, validateConfig } from './client.mjs';
 import { CofreWorkspace, renderCofreReport, renderPublicationContext } from './cofre-ui.mjs';
+import { createAuthControls, consumeAuthFragment } from './auth-controls.mjs';
+import { AuthControlsUI } from './auth-controls-ui.mjs';
 
 const $ = id => document.getElementById(id);
 let client, session, reports = [], publications = [], generation = 0, detailGeneration = 0;
 let busy = false;
-let roster = [], activeView = 'diagnostics', cofre;
+let roster = [], activeView = 'diagnostics', cofre, authUI;
+let accessLink = null, accessLinkError = false;
+// Remove Auth fragments before configuration requests or rendering any account data.
+try { accessLink = consumeAuthFragment(location.href, url => history.replaceState(history.state, '', url)); }
+catch { accessLinkError = true; }
 const requestKeys = new Map();
 const message = value => { $('message').textContent = value; };
 function element(tag, value = '', cls = '') {
@@ -13,6 +19,7 @@ function element(tag, value = '', cls = '') {
 function clearWorkspace() {
   ++generation; ++detailGeneration; session = null; reports = []; publications = []; requestKeys.clear();
   roster = []; activeView = 'diagnostics'; cofre?.clear();
+  authUI?.clear();
   $('workspace').hidden = true; $('login-panel').hidden = false; $('logout').hidden = true;
   $('identity').textContent = ''; $('reports').replaceChildren(); $('detail').replaceChildren();
   $('password').value = '';
@@ -37,6 +44,12 @@ async function refresh() {
   // Remove the old document before any authorization recheck, including failures.
   $('detail').replaceChildren(element('h2', 'Selecione um diagnóstico'));
   $('reports').replaceChildren(); reports = []; publications = [];
+  const access = await client.api('/access-requirements');
+  if (epoch !== generation || !session) return;
+  if (access.mfa_required && access.assurance_level !== 'aal2') {
+    $('workspace').hidden = true; $('login-panel').hidden = true;
+    await authUI.startMfa(); return;
+  }
   const [versions, deliveries, people, current] = await Promise.all([
     client.api('/reports'), client.api('/publications'), client.api('/cofre/workspaces'), client.api('/session')]);
   if (epoch !== generation || !session) return;
@@ -210,18 +223,27 @@ $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-na
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics'); });
 window.addEventListener('beforeunload', event => { if (cofre.dirty && session) { event.preventDefault(); event.returnValue = ''; } });
 
+async function continueAccess(current) {
+  if (!Array.isArray(current.assignments) || typeof current.user_id !== 'string') throw new Error('Sessão inválida.');
+  session = current; ++generation; activeView = 'cases';
+  const epoch = generation, access = await client.api('/access-requirements');
+  if (epoch !== generation || !session) return;
+  if (typeof access.mfa_required !== 'boolean' || !['aal1','aal2'].includes(access.assurance_level)) throw new Error('Sessão inválida.');
+  $('login-panel').hidden = true; $('logout').hidden = false;
+  if (access.mfa_required && access.assurance_level !== 'aal2') {
+    $('workspace').hidden = true; await authUI.startMfa(); return;
+  }
+  authUI.clear(); $('workspace').hidden = false;
+  await refresh();
+}
+
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault(); if (busy || !client) return;
   busy = true; $('login').disabled = true; message('');
   const email = $('email').value.trim(), password = $('password').value; $('password').value = '';
   try {
     const current = await client.login(email, password);
-    if (!Array.isArray(current.assignments) || typeof current.user_id !== 'string') throw new Error('Sessão inválida.');
-    session = current; ++generation;
-    activeView = 'cases';
-    $('identity').textContent = current.assignments.length ? 'Console da equipe · acesso por caso' : 'Portal do cliente';
-    $('workspace').hidden = false; $('login-panel').hidden = true; $('logout').hidden = false;
-    await refresh();
+    await continueAccess(current);
   } catch (error) { client.clear(); message(error.message); }
   finally { busy = false; $('login').disabled = false; }
 });
@@ -240,5 +262,19 @@ try {
   const response = await fetch('./config.json', { cache: 'no-store', credentials: 'omit', redirect: 'error' });
   if (!response.ok) throw new Error('Ambiente ainda não configurado.');
   const config = validateConfig(await response.json(), location.origin);
-  client = new PortalClient(config, { onEnd: clearWorkspace }); $('login').disabled = false;
+  client = new PortalClient(config, { onEnd: clearWorkspace });
+  const auth = createAuthControls({ request: (path, options) => client.authRequest(path, options),
+    onSession: value => client.adoptSession(value) });
+  authUI = new AuthControlsUI({ root: $('auth-controls'), auth,
+    onAuthenticated: async () => continueAccess(await client.api('/session')),
+    onPasswordUpdated: async result => { client.clear(); message(result?.session_ended
+      ? 'Senha salva. Entre novamente com seu e-mail e a nova senha.'
+      : 'Senha salva, mas o servidor não confirmou o encerramento da sessão temporária. Entre novamente e peça apoio à equipe se o aviso continuar.'); },
+    onCancel: async () => { try { await client.logout(); } catch { client.clear(); } },
+  });
+  $('recover').disabled = false; $('login').disabled = false;
+  $('recover').addEventListener('click', () => { if (busy) return; $('login-panel').hidden = true; authUI.showRecoveryRequest(); });
+  if (accessLink || accessLinkError) {
+    $('login-panel').hidden = true; authUI.startAccessLink(accessLink); accessLink = null;
+  }
 } catch { message('Ambiente ainda não configurado. A equipe precisa concluir a implantação.'); }
