@@ -105,14 +105,18 @@ jobs:
           p.write_text(content.replace(old, 'schemas = ["public", "graphql_public", "capital_web3"]'))
           PYCONFIG
           supabase migration new unrelated_neighbor_fixture
+          sleep 1
           cp "$GITHUB_WORKSPACE/tests/fixtures/shared_neighbor.sql" supabase/migrations/*_unrelated_neighbor_fixture.sql
           supabase migration new capital_advisory_foundation
+          sleep 1
           cp "$GITHUB_WORKSPACE/supabase/migrations/0001_advisory.sql" supabase/migrations/*_capital_advisory_foundation.sql
           supabase migration new human_workflow
+          sleep 1
           cp "$GITHUB_WORKSPACE/supabase/migrations/0002_human_workflow.sql" supabase/migrations/*_human_workflow.sql
           for migration in "$GITHUB_WORKSPACE"/supabase/migrations/20*.sql; do
             name=$(basename "$migration" .sql)
             supabase migration new "$name"
+            sleep 1
             cp "$migration" supabase/migrations/*_"$name".sql
           done
       - name: Start disposable Auth PostgREST Storage database
