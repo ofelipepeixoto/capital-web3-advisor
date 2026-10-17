@@ -23,6 +23,11 @@ publicação, com as mesmas regras de dados; não é uma segunda base para migra
    restauração automática. Logout e expiração limpam a interface; o banco
    revalida a existência da sessão nas entradas COFRE, inclusive RPC/Data API.
 
+O bundle hospedado inclui CSP no HTML, com scripts/estilos locais, conexão ao
+projeto Supabase exato e `data:` somente para imagens do QR. A configuração
+Caddy opcional também emite headers. Proteção de frame/HSTS e outros controles
+do host precisam ser verificados separadamente; a meta CSP não os implementa.
+
 ## Convites e e-mail
 
 A interface recebe links de convite e oferece recuperação. O envio de convites

@@ -1,5 +1,5 @@
 /** Deterministic static bundle; public configuration only. Does not deploy. */
-import { mkdir, copyFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, readFile, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateConfig } from '../apps/staging/client.mjs';
@@ -16,6 +16,12 @@ try {
   await rm(output + '/public', { recursive: true, force: true });
   await mkdir(output + '/public', { recursive: true });
   for (const name of ['index.html', 'styles.css', 'app.mjs', 'client.mjs', 'cofre-ui.mjs', 'auth-controls.mjs', 'auth-controls-ui.mjs']) await copyFile(root + '/apps/staging/' + name, output + '/public/' + name);
+  // Static Sites cannot apply the optional Caddyfile. Enforce a precise policy in
+  // the generated page as well; frame-ancestors still requires a host header.
+  const html = await readFile(output + '/public/index.html', 'utf8');
+  if (html.split('<head>').length !== 2) throw new Error('invalid_html');
+  const policy = `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ${valid.base}; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  await writeFile(output + '/public/index.html', html.replace('<head>', `<head>\n  <meta http-equiv="Content-Security-Policy" content="${policy}">`));
   await writeFile(output + '/public/config.json', JSON.stringify(config, null, 2) + '\n');
   await writeFile(output + '/Caddyfile', `${parsed.hostname} {
   root * /srv/capital-web3-portal/public
