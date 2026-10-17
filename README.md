@@ -22,6 +22,10 @@ O domínio [capital.camaleaoweb3.com.br](https://capital.camaleaoweb3.com.br/)
 está ativo com SSL no Sites e aponta para esse Site. É um endereço de
 homologação, não um convite para inserir dados reais ou uma validação de piloto.
 
+## Jornada COFRE Individual em desenvolvimento
+
+A nova fatia acrescenta abertura de caso pela equipe provisionada, consentimentos de teste, questionário com opções, inventário categórico, sete controles com evidência, rascunho determinístico e relatório legível/imprimível. Continua exclusivamente sintética e depende de revisão e validação registradas no [estado atual](docs/current-state-2026-10-17.md).
+
 ## Testar
 
 Python 3.11 ou superior; Node.js 24 para transições da interface e contratos da API.
@@ -31,7 +35,7 @@ Sem pacotes externos para a demonstração ou estes testes.
 git clone https://github.com/ofelipepeixoto/capital-web3-advisor.git
 cd capital-web3-advisor
 # Durante a revisão inicial, a implementação completa está nesta branch:
-git checkout feat/homologation-evidence
+git checkout feat/cofre-individual-journey
 make check
 make demo
 ```
@@ -111,10 +115,10 @@ dos gates descritos nos documentos.
 
 As novas camadas de homologação seguem os quatro PRs iniciais:
 `feat/authenticated-human-workflow` → `feat/durable-budgets-jobs` →
-`feat/homologation-evidence`. A última contém o candidato completo para testes.
+`feat/homologation-evidence`. `feat/cloud-staging-homologation` contém o candidato cloud. `feat/cofre-individual-journey` acrescenta a jornada COFRE.
 As branches têm dependências explícitas. Os PRs #1–#7 permanecem abertos.
 O PR #9, de contexto de leitura, foi integrado à branch de homologação.
-Novas camadas seguem para revisão humana. Consulte `docs/homologation.md`.
+PR #11 foi integrada à base de #10 e PR #12 registra cloud. PR #13 protege colunas internas; a jornada COFRE segue na camada posterior. O `main` ainda não contém a stack completa. Novas camadas seguem para revisão humana. Consulte `docs/homologation.md`.
 
 ## Direitos
 

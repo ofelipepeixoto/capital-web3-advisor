@@ -1,5 +1,5 @@
 /** Deterministic static bundle; public configuration only. Does not deploy. */
-import { mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateConfig } from '../apps/staging/client.mjs';
@@ -13,8 +13,9 @@ try {
   const valid = validateConfig(config, origin);
   if (/REPLACE|PROJECT_REF|synthetic|example/i.test(config.supabaseUrl + config.publishableKey + origin)) throw new Error();
   const output = resolve(root, 'dist/staging');
+  await rm(output + '/public', { recursive: true, force: true });
   await mkdir(output + '/public', { recursive: true });
-  for (const name of ['index.html', 'styles.css', 'app.mjs', 'client.mjs']) await copyFile(root + '/apps/staging/' + name, output + '/public/' + name);
+  for (const name of ['index.html', 'styles.css', 'app.mjs', 'client.mjs', 'cofre-ui.mjs']) await copyFile(root + '/apps/staging/' + name, output + '/public/' + name);
   await writeFile(output + '/public/config.json', JSON.stringify(config, null, 2) + '\n');
   await writeFile(output + '/Caddyfile', `${parsed.hostname} {
   root * /srv/capital-web3-portal/public

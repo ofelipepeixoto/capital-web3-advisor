@@ -1,7 +1,7 @@
 # Homologação sintética na nuvem — 17/10/2026
 
 Escopo: projeto Supabase Free compartilhado `jgdebcmiklqajhbeniri`, somente
-`capital_web3` e `capital_web3_private`; portal privado de homologação, sem
+`capital_web3` e `capital_web3_private`; portal de homologação sintética, sem
 clientes reais, IA paga ou execução financeira. Os dois usuários preexistentes
 e os outros namespaces do projeto não receberam atribuições Capital.
 
@@ -14,8 +14,8 @@ e os outros namespaces do projeto não receberam atribuições Capital.
 - Edge `advisory-api` v2 ativa com `verify_jwt=true`; `GET /health` retornou
   `200` e `mode=synthetic-staging`. O runtime hospedado encaminha o caminho
   `/advisory-api/...`; o handler agora normaliza esse prefixo e o caminho
-  completo do gateway. `ADVISORY_ALLOWED_ORIGINS` contém somente a origem
-  HTTPS do portal, sem alterar os segredos das outras aplicações.
+  completo do gateway. `ADVISORY_ALLOWED_ORIGINS` contém as duas origens
+  HTTPS do portal: URL Sites e domínio personalizado, sem alterar os segredos das outras aplicações.
 - Site v2 publicado. O domínio
   <https://capital.camaleaoweb3.com.br/> está ativo com SSL e aponta para o
   Site; a URL gerada é
