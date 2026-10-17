@@ -11,7 +11,8 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
   if (status.API_URL !== 'http://127.0.0.1:54321') throw new Error('local stack required');
   const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
     '/app.mjs': ['app.mjs', 'text/javascript'], '/client.mjs': ['client.mjs', 'text/javascript'],
-    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };
+    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
+    '/auth-controls.mjs': ['auth-controls.mjs','text/javascript'], '/auth-controls-ui.mjs': ['auth-controls-ui.mjs','text/javascript'] };
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
     try {

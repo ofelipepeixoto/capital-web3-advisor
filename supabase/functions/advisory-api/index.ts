@@ -247,6 +247,13 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
       const rpc = (name: string, body: JsonObject): Promise<unknown> =>
         database("/rest/v1/rpc/" + name, { method: "POST", body: JSON.stringify(body) });
 
+      if (request.method === 'GET' && path === '/access-requirements') {
+        const value = await rpc('advisory_access_requirements', {});
+        if (value === null) throw new ApiError(401, 'authentication_required');
+        if (!isObject(value) || typeof value.mfa_required !== 'boolean' ||
+            !['aal1','aal2'].includes(String(value.assurance_level))) throw new ApiError(503, 'upstream_unavailable');
+        return respond(200, { mfa_required: value.mfa_required, assurance_level: value.assurance_level, request_id: requestId });
+      }
       if (request.method === 'GET' && path === '/cofre/workspaces') {
         return respond(200, { data: await rpc('advisory_cofre_workspaces', {}), request_id: requestId });
       }

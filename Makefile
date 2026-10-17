@@ -10,6 +10,7 @@ check: test
 	@if test -f tests/test_api_staging.mjs; then node --test tests/test_api_staging.mjs; fi
 	node --test tests/test_staging_client.mjs
 	node --test tests/test_cofre.mjs tests/test_cofre_api.mjs tests/test_cofre_ui.mjs
+	node --test tests/test_auth_controls.mjs tests/test_auth_controls_ui.mjs
 demo:
 	$(PYTHON) -m capital_web3.server
 mcp:

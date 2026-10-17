@@ -19,8 +19,11 @@
         <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required maxlength="256">
         <button id="login" class="primary" disabled>Entrar</button>
       </form>
+      <button id="recover" type="button" disabled aria-describedby="recovery-status">Esqueci minha senha</button>
+      <p id="recovery-status" class="muted">A recuperação por e-mail está em preparação. Para recuperar o acesso, procure a equipe por um canal conhecido.</p>
       <p class="muted">O acesso precisa ser previamente configurado pela equipe. Ao recarregar esta página, entre novamente.</p>
     </section>
+    <section id="auth-controls" class="card compact" hidden aria-label="Segurança da conta"></section>
     <section id="workspace" hidden>
       <div class="toolbar"><div><h1>Seu espaço Capital Web3</h1><p id="identity" class="muted"></p></div><button id="refresh">Atualizar acesso</button></div>
       <nav id="workspace-nav" class="actions" aria-label="Área de trabalho" hidden><button id="cases-tab" aria-controls="cases-panel">Atendimentos</button><button id="reports-tab" aria-controls="diagnostics-panel">Diagnósticos</button></nav>

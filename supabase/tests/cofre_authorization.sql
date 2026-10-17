@@ -44,9 +44,10 @@ insert into auth.sessions(id,user_id,created_at,updated_at,aal,not_after) values
  ('93000000-0000-0000-0000-000000000010','13000000-0000-0000-0000-000000000010',now(),now(),'aal1',now()+interval '1 hour'),
  ('93000000-0000-0000-0000-000000000011','13000000-0000-0000-0000-000000000011',now(),now(),'aal1',now()+interval '1 hour'),
  ('93000000-0000-0000-0000-000000000012','13000000-0000-0000-0000-000000000012',now(),now(),'aal1',now()+interval '1 hour');
-insert into capital_web3_private.cofre_workspaces(id,label) values
- ('83000000-0000-0000-0000-000000000001','SQL synthetic workspace A'),
- ('83000000-0000-0000-0000-000000000002','SQL synthetic workspace B');
+-- Legacy journey fixtures explicitly opt out; dedicated MFA tests exercise true.
+insert into capital_web3_private.cofre_workspaces(id,label,staff_mfa_required) values
+ ('83000000-0000-0000-0000-000000000001','SQL synthetic workspace A',false),
+ ('83000000-0000-0000-0000-000000000002','SQL synthetic workspace B',false);
 insert into capital_web3_private.cofre_workspace_members(workspace_id,user_id,display_name,member_role) values
  ('83000000-0000-0000-0000-000000000001','13000000-0000-0000-0000-000000000001','Synthetic A','client'),
  ('83000000-0000-0000-0000-000000000001','13000000-0000-0000-0000-000000000010','Synthetic author','analyst'),

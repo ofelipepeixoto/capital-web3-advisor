@@ -8,6 +8,30 @@ const token = 'synthetic.jwt.signature';
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
 const auth = () => json({ access_token: token, refresh_token: 'never-persist-this', expires_in: 3600 });
 const session = () => json({ user_id: 'synthetic-user', assignments: [] });
+test('MFA upgrade replaces the bearer without clearing the UI and rejects earlier in-flight results', async () => {
+  let finish; let ended = 0; const calls=[];
+  const client = new PortalClient(config,{onEnd:()=>{ended+=1;},fetcher:async(url,init)=>{
+    calls.push(init.headers.Authorization);
+    if(url.endsWith('/reports')) return new Promise(resolve=>{finish=()=>resolve(json({data:[]}));});
+    return session();
+  }});
+  client.adoptSession({access_token:token,expires_in:3600}); const pending=client.api('/reports');
+  client.adoptSession({access_token:'mfa.jwt.signature',expires_in:1800,refresh_token:'discard'});
+  finish(); await assert.rejects(pending,/Sessão alterada/);
+  await client.api('/access-requirements'); assert.equal(calls.at(-1),'Bearer mfa.jwt.signature');
+  assert.equal(ended,0); assert.ok(!JSON.stringify(client).includes('mfa.jwt')); client.clear();
+});
+test('public recovery never inherits a current bearer and Auth methods have a fixed route set', async () => {
+  const calls=[]; const client=new PortalClient(config,{fetcher:async(url,init)=>{calls.push({url,init});return json({});}});
+  client.adoptSession({access_token:token,expires_in:3600});
+  await client.authRequest('/auth/v1/recover?redirect_to=https%3A%2F%2Fcapital.camaleaoweb3.com.br%2F',
+    {method:'POST',body:{email:'synthetic@example.invalid'},token:null});
+  assert.equal(calls[0].init.headers.Authorization,undefined);
+  for(const path of ['/auth/v1/admin/users','/rest/v1/advisory_cases','https://foreign.invalid/auth/v1/user']) {
+    await assert.rejects(client.authRequest(path,{method:'DELETE'}),/Rota de acesso inválida/);
+  }
+  assert.equal(calls.length,1); client.clear();
+});
 test('configuration rejects secret keys, extra destinations and insecure hosted origins', () => {
   const secret = 'head.' + Buffer.from('{"role":"service_role"}').toString('base64url') + '.sig';
   for (const values of [ { ...settings, publishableKey: secret }, { ...settings, publishableKey: 'sb_secret_never_allowed' },
