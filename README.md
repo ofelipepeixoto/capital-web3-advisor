@@ -17,7 +17,7 @@ O titular escolheu o projeto existente `radar-disruptivo`. A adaptação usa os
 schemas `capital_web3` e `capital_web3_private`, com Auth e cotas compartilhados.
 Consulte [plano e limites do staging Free](docs/free-shared-staging.md).
 A fundação de banco/Storage foi implantada e verificada. A jornada COFRE está
-hospedada na Edge v5 e Site v4, com MFA da equipe exigido no banco;
+hospedada na Edge v5 e Site v6, com MFA da equipe exigido no banco;
 veja as [evidências de acesso no domínio oficial](docs/evidence/auth-official-2026-10-17.md),
 as [evidências COFRE](docs/evidence/cofre-individual-2026-10-17.md)
 e a [homologação anterior](docs/evidence/cloud-staging-2026-10-17.md).
@@ -36,7 +36,7 @@ conferir a versão, aprovar e selecionar o destinatário. O cliente vê somente
 versões revisadas e publicadas. As senhas anteriores não foram redefinidas.
 Na primeira entrada da equipe, o próprio titular configura seu aplicativo
 autenticador; o agente não cadastrou fatores nas contas existentes. Recuperação
-por e-mail permanece desabilitada até validar Redirect URL e entrega real.
+por e-mail permanece desabilitada até validar a entrega real de e-mail; a Redirect URL já foi salva.
 
 O repositório e a página já são públicos. A CI completa de #15 e as 18
 verificações de MFA na API hospedada passaram. A preparação operacional está
@@ -44,6 +44,12 @@ em [#16](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/16): ensaio
 de restauração SQLite aprovado, sem substituir restauração isolada do COFRE
 hospedado. Contas reais da equipe, retenção/descarte, anexos, restauração e
 revisão jurídica/comercial continuam gates antes de clientes reais.
+
+## Navegação revisada
+
+A [revisão UX/UI](docs/ux-navigation-review-2026-10-17.md) registra as correções
+de criação de atendimento, proteção das respostas, atalhos de etapas, identificação
+de versões e navegação do relatório. Site v6 publicado; CI da PR #17 aprovada.
 
 ## Testar
 
@@ -54,7 +60,7 @@ Sem pacotes externos para a demonstração ou estes testes.
 git clone https://github.com/ofelipepeixoto/capital-web3-advisor.git
 cd capital-web3-advisor
 # Durante a revisão inicial, a implementação completa está nesta branch:
-git checkout feat/cofre-individual-journey
+git checkout feat/portal-navigation-ux
 make check
 make demo
 ```
@@ -84,7 +90,7 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | `capital_web3/risk.py` | NAV, dívida, concentração, stress, IL e CLAMM com Decimal |
 | `capital_web3/service.py` | Casos, autorização por objeto e revisão/publicação por versão |
 | `capital_web3/server.py`, `apps/web/` | API local e console/portal de demonstração |
-| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth/MFA Supabase, questionário COFRE e relatório legível; Site v4 publicado |
+| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth/MFA Supabase, questionário COFRE e relatório legível; Site v6 publicado |
 | `supabase/functions/advisory-api/cofre.ts` | Validação fechada e regras versionadas do COFRE sintético, sem score |
 | `capital_web3/adapters.py`, `contracts/` | Relatório fictício e contratos; OpenAI real bloqueada |
 | `capital_web3/mcp.py` | Exemplo MCP local por stdio, com ferramentas de leitura |
@@ -104,7 +110,7 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | MCP | Exemplo local de protocolo; não é servidor remoto homologado |
 | Supabase | Fundação e migrações COFRE no Free compartilhado; Edge v5, Auth/MFA/RLS e smoke sintético registrados, sem piloto real |
 | n8n | JSONs inativos; importação/execução na instância ainda não realizada |
-| Sites | Site v3 publicado no domínio acima, acesso `public`; documentos exigem Auth/RLS, sem liberação de clientes reais |
+| Sites | Site v6 publicado no domínio acima, acesso `public`; documentos exigem Auth/RLS, sem liberação de clientes reais |
 | Hostinger | Roteiro de staging; nenhum serviço/VPS alterado |
 
 ## Plano e evolução
@@ -138,6 +144,7 @@ dos gates descritos nos documentos.
 | [#14](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/14) | Jornada COFRE Individual sintética | fix/client-data-api-projection |
 | [#15](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/15) | MFA, sessões e capacidades de convite/recuperação | feat/cofre-individual-journey |
 | [#16](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/16) | Ensaio operacional e prévia de retenção | feat/cofre-individual-journey |
+| [#17](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/17) | Navegação e relatório UX/UI | feat/cofre-auth-controls |
 
 As novas camadas de homologação seguem os quatro PRs iniciais:
 `feat/authenticated-human-workflow` → `feat/durable-budgets-jobs` →

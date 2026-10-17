@@ -73,12 +73,15 @@ Leitura HTTP pública não encontrou CSP/HSTS/X-Frame-Options/Referrer-Policy
 como headers. A meta CSP não implementa proteção contra framing ou HSTS;
 esses controles de hospedagem continuam pendentes.
 
+## Atualização após autorização do titular
+
+`Save URLs` foi executado e a lista de cinco entradas foi conferida na interface:
+`https://capital.camaleaoweb3.com.br/` acrescentada, quatro URLs anteriores
+preservadas e Site URL `https://radardisruptivo.com.br` mantida. Essa ação não
+comprova entrega de e-mail.
+
 ## O que permanece pendente
 
-- Salvar `https://capital.camaleaoweb3.com.br/` nas Redirect URLs do Auth,
-  preservando as quatro URLs anteriores e Site URL `https://radardisruptivo.com.br`.
-  A entrada está preparada na interface, sem clicar em Save URLs: a política
-  de segurança do navegador exige confirmação no momento dessa ampliação.
 - Testar remetente/SMTP, templates, expiração e ida/retorno com e-mail autorizado.
   Helpers implementados e CI local não comprovam entrega hospedada.
 - Pessoas reais configuram seus próprios autenticadores e recebem papéis

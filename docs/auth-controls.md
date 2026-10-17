@@ -36,8 +36,8 @@ real de e-mail; o teste local da capacidade não habilita esse envio. O envio de
 e o roster continuam administrativos; não há cadastro público de papéis.
 Antes de convidar pessoas reais, confirmar no Auth compartilhado:
 
-- Adicionar **somente** `https://capital.camaleaoweb3.com.br/` às Redirect URLs,
-  preservando as URLs e a Site URL das outras aplicações. Evitar wildcard.
+- Redirect URL `https://capital.camaleaoweb3.com.br/` já salva e conferida após
+  autorização; quatro entradas anteriores e Site URL preservadas. Sem wildcard.
 - Conferir SMTP/remetente, expiração e limites de envio; testar ida/retorno com
   um e-mail de equipe autorizado. Não foram enviados convites neste ensaio.
 - Provisionar o UUID confirmado no roster Capital com papel e caso explícitos;

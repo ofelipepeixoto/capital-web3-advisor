@@ -36,8 +36,8 @@ sessões ativas ao final do ensaio.
 Isso comprova o comportamento técnico com identidades fictícias, não a adesão
 da equipe real. Cada integrante ainda precisa receber o acesso correto, cadastrar
 seu fator e validar recuperação. O botão de recuperação de conta permanece
-**desabilitado**: ainda faltam salvar a Redirect URL exata no Auth e comprovar o
-envio/recebimento por SMTP. Não declarar convite ou recuperação por e-mail
+**desabilitado**: a Redirect URL exata foi salva, preservando as quatro anteriores
+e a Site URL. Ainda falta comprovar o envio/recebimento por SMTP. Não declarar convite ou recuperação por e-mail
 homologados a partir dos testes sem envio.
 
 ## Operação preparada e ensaio local aprovado — PR #16
@@ -73,3 +73,10 @@ Cadastro público do Auth compartilhado não concede acesso Capital; um roster/v
 - Implementar e homologar uploads/bytes antes de liberar anexos; verificar isolamento entre organizações, headers e limites/carga.
 
 O modo sintético, a página/código públicos e os consentimentos de teste não substituem essas validações. As evidências da PR #16 não devem ser atribuídas à PR #15 ou apresentadas como restauração Supabase concluída.
+
+## Navegação revisada — PR #17
+
+Site v6 publicado no domínio oficial; backend continua Edge v5.
+[Relatório UX/UI](ux-navigation-review-2026-10-17.md) com problemas, correções,
+evidências e limites. CI 39074153406 aprovada, incluindo 19 verificações Chromium
+COFRE com contas fictícias descartáveis. Nenhum merge ou liberação de dados reais.
