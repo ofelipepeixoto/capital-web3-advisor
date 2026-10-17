@@ -110,6 +110,11 @@ jobs:
           cp "$GITHUB_WORKSPACE/supabase/migrations/0001_advisory.sql" supabase/migrations/*_capital_advisory_foundation.sql
           supabase migration new human_workflow
           cp "$GITHUB_WORKSPACE/supabase/migrations/0002_human_workflow.sql" supabase/migrations/*_human_workflow.sql
+          for migration in "$GITHUB_WORKSPACE"/supabase/migrations/20*.sql; do
+            name=$(basename "$migration" .sql)
+            supabase migration new "$name"
+            cp "$migration" supabase/migrations/*_"$name".sql
+          done
       - name: Start disposable Auth PostgREST Storage database
         run: |
           umask 077
