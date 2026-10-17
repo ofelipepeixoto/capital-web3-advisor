@@ -16,6 +16,25 @@ const message = value => { $('message').textContent = value; };
 function element(tag, value = '', cls = '') {
   const node = document.createElement(tag); node.textContent = value; node.className = cls; return node;
 }
+function reportLabel(report, index) {
+  const title = cofre?.cases?.find(item => item.id === report.case_id)?.client_safe_title;
+  return `${title || 'Diagnóstico ' + (index + 1)} · versão ${report.version_number}`;
+}
+function reportNavigation(panel, body) {
+  const sections = [...body.querySelectorAll('h3')];
+  if (sections.length < 3) return;
+  const nav = element('nav', '', 'report-navigation no-print');
+  nav.setAttribute('aria-label', 'Seções do diagnóstico');
+  nav.append(element('strong', 'Ir para uma seção'));
+  const links = element('div', '', 'report-navigation-links');
+  sections.forEach((heading, index) => {
+    heading.id = `report-section-${index + 1}`;
+    const link = element('a', heading.textContent);
+    link.href = `#${heading.id}`;
+    links.append(link);
+  });
+  nav.append(links); panel.append(nav);
+}
 function clearWorkspace() {
   ++generation; ++detailGeneration; session = null; reports = []; publications = []; requestKeys.clear();
   roster = []; activeView = 'diagnostics'; cofre?.clear();
@@ -65,8 +84,8 @@ async function refresh() {
   if (!reports.length) $('reports').append(element('p', staff
     ? 'Nenhum rascunho atribuído. Abra Atendimentos para preparar um COFRE Individual fictício.'
     : 'Nenhum diagnóstico foi publicado para você. A equipe precisa revisar e liberar uma versão para esta conta.'));
-  for (const report of reports) {
-    const node = button('Diagnóstico · versão ' + report.version_number, () => openReport(report));
+  for (const [index, report] of reports.entries()) {
+    const node = button(reportLabel(report, index), () => openReport(report));
     node.dataset.version = report.id; $('reports').append(node);
   }
 }
@@ -120,8 +139,13 @@ async function openReport(report) {
   }
   if (epoch !== generation || readGeneration !== detailGeneration || !session) return;
   const content = row.content && typeof row.content === 'object' ? row.content : {};
+  const documentBody = facts(content, staff);
   panel.replaceChildren(element('h2', typeof content.title === 'string' ? content.title : 'Diagnóstico'),
-    element('p', 'Versão ' + report.version_number + ' · documento ' + report.id, 'muted'), facts(content, staff));
+    element('p', 'Versão ' + report.version_number + ' · documento ' + report.id, 'muted'));
+  reportNavigation(panel, documentBody);
+  panel.append(documentBody);
+  for (const choice of $('reports').querySelectorAll('button')) choice.setAttribute('aria-pressed', String(choice.dataset.version === report.id));
+  if (typeof matchMedia === 'function' && matchMedia('(max-width: 740px)').matches) { panel.querySelector('h2').tabIndex = -1; panel.querySelector('h2').focus(); }
   if (!staff) panel.append(renderPublicationContext(publications.filter(row => row.report_version_id === report.id)));
   const proof = element('details'); proof.append(element('summary', 'Identificador desta versão'), element('code', row.content_sha256));
   if (pkg) proof.append(element('p', 'Identificador dos anexos'), element('code', pkg.manifest_sha256));
