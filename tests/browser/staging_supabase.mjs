@@ -10,7 +10,8 @@ import { createHash } from 'node:crypto';
 export async function runStagingBrowser({ status, users, ids, handler, origin }) {
   if (status.API_URL !== 'http://127.0.0.1:54321') throw new Error('local stack required');
   const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
-    '/app.mjs': ['app.mjs', 'text/javascript'], '/client.mjs': ['client.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };
+    '/app.mjs': ['app.mjs', 'text/javascript'], '/client.mjs': ['client.mjs', 'text/javascript'],
+    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
     try {
@@ -93,9 +94,9 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
       await client.screenshot({ path: artifact + '/staging-client-mobile.png', fullPage: true });
       await reviewer.screenshot({ path: artifact + '/staging-reviewer-desktop.png', fullPage: true });
     }
-    gate = 'authorized download';
-    const downloadPromise = client.waitForEvent('download');
-    await client.getByRole('button', { name: 'Baixar diagnóstico', exact: true }).click();
+    gate = 'authorized staff technical download';
+    const downloadPromise = reviewer.waitForEvent('download');
+    await reviewer.getByRole('button', { name: 'Baixar JSON técnico', exact: true }).click();
     const download = await downloadPromise;
     const downloaded = JSON.parse(await readFile(await download.path(), 'utf8'));
     expect(downloaded.id === ids.versionA2, 'download contains authorized version');
@@ -103,7 +104,7 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
     await client.getByText('Recebimento registrado. Isso não aprova uma estratégia ou transação.', { exact: true }).waitFor();
     checks.push('client receipt persisted through RPC');
     gate = 'foreign client isolation'; const foreign = await login('clientB');
-    await foreign.getByText('Nenhum diagnóstico disponível para esta conta.', { exact: true }).waitFor();
+    await foreign.getByText('Nenhum diagnóstico foi publicado para você. A equipe precisa revisar e liberar uma versão para esta conta.', { exact: true }).waitFor();
     expect(await foreign.locator('[data-version="' + ids.versionA2 + '"]').count() === 0, 'foreign client sees no diagnosis');
     gate = 'revoke from browser';
     await reviewer.getByRole('button', { name: 'Revogar esta entrega', exact: true }).waitFor();
@@ -111,7 +112,7 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
     await reviewer.getByRole('button', { name: 'Revogar esta entrega', exact: true }).click();
     await reviewer.getByText(/Entrega revogada\./).waitFor();
     await client.locator('#refresh').click();
-    await client.getByText('Nenhum diagnóstico disponível para esta conta.', { exact: true }).waitFor();
+    await client.getByText('Nenhum diagnóstico foi publicado para você. A equipe precisa revisar e liberar uma versão para esta conta.', { exact: true }).waitFor();
     expect(!(await client.locator('#detail').innerText()).includes('Synthetic diagnosis A v2'), 'revocation refresh clears rendered diagnosis');
     gate = 'logout and reload'; await client.locator('#logout').click();
     await client.locator('#login-panel').waitFor({ state: 'visible' }); await client.reload();

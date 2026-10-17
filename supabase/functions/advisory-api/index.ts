@@ -2,6 +2,7 @@
  * No service-role client, persona selector, AI approval or financial execution.
  * Native fetch avoids runtime packages and only reaches the operator's project URL.
  */
+import { validateCofreIntake, buildCofreReport } from './cofre.ts';
 type EnvReader = (name: string) => string | undefined;
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type JsonObject = Record<string, unknown>;
@@ -245,6 +246,42 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
       };
       const rpc = (name: string, body: JsonObject): Promise<unknown> =>
         database("/rest/v1/rpc/" + name, { method: "POST", body: JSON.stringify(body) });
+
+      if (request.method === 'GET' && path === '/cofre/workspaces') {
+        return respond(200, { data: await rpc('advisory_cofre_workspaces', {}), request_id: requestId });
+      }
+      if (request.method === 'POST' && path === '/cofre/cases') {
+        const body = await readBody(request);
+        exactKeys(body, ['workspace_id', 'client_user_id', 'idempotency_key']);
+        const data = await rpc('advisory_create_cofre_case', {
+          p_workspace_id: assertUuid(body.workspace_id), p_client_user_id: assertUuid(body.client_user_id),
+          p_idempotency_key: assertUuid(body.idempotency_key),
+        });
+        return respond(200, { data, request_id: requestId });
+      }
+      const intakeRoute = path.match(/^\/cofre\/cases\/([^/]+)\/intake$/);
+      if (intakeRoute) {
+        const caseId = assertUuid(intakeRoute[1]);
+        if (request.method === 'GET') {
+          const rows = await database('/rest/v1/cofre_intakes?select=case_id,revision,intake,report_version_id,created_at&case_id=eq.' + caseId + '&order=revision.desc&limit=1');
+          if (!Array.isArray(rows)) throw new ApiError(503, 'upstream_unavailable');
+          return respond(200, { data: rows[0] ?? null, request_id: requestId });
+        }
+        if (request.method === 'POST') {
+          const body = await readBody(request);
+          exactKeys(body, ['intake', 'expected_revision', 'idempotency_key']);
+          if (!Number.isSafeInteger(body.expected_revision) || (body.expected_revision as number) < 0 ||
+            (body.expected_revision as number) > 10000) throw new ApiError(400, 'invalid_request');
+          let intake;
+          try { intake = validateCofreIntake(body.intake); }
+          catch { throw new ApiError(400, 'invalid_cofre_intake'); }
+          const data = await rpc('advisory_save_cofre_intake', {
+            p_case_id: caseId, p_intake: intake, p_content: buildCofreReport(intake, new Date().toISOString()),
+            p_expected_revision: body.expected_revision, p_idempotency_key: assertUuid(body.idempotency_key),
+          });
+          return respond(200, { data, request_id: requestId });
+        }
+      }
 
       if (request.method === "GET" && path === "/session") {
         const assignments = await database("/rest/v1/advisory_case_staff?select=case_id,staff_role&active=eq.true&limit=100");

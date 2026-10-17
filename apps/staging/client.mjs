@@ -93,7 +93,7 @@ export class PortalClient {
     catch (error) { if (epoch === this.#epoch) this.clear(); throw error; }
   }
   async api(path, body) {
-    if (!/^\/(?:session|cases|reports|publications)(?:\/[a-zA-Z0-9-]+)*$/.test(path)) throw new Error('Rota inválida.');
+    if (!/^\/(?:session|cases|reports|publications|cofre)(?:\/[a-zA-Z0-9-]+)*$/.test(path)) throw new Error('Rota inválida.');
     if (!this.#token || this.clock() >= this.#expires) { this.clear(); throw new Error('Sessão encerrada. Entre novamente.'); }
     const epoch = this.#epoch;
     try {
