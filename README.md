@@ -16,11 +16,22 @@ não torna públicos os futuros diagnósticos.
 O titular escolheu o projeto existente `radar-disruptivo`. A adaptação usa os
 schemas `capital_web3` e `capital_web3_private`, com Auth e cotas compartilhados.
 Consulte [plano e limites do staging Free](docs/free-shared-staging.md).
-A fundação de banco/Storage foi implantada e verificada. Edge v2 e Site v2 foram
-exercitados em [homologação sintética na nuvem](docs/evidence/cloud-staging-2026-10-17.md).
+A fundação de banco/Storage foi implantada e verificada. A jornada COFRE está
+hospedada na Edge v4 e Site v3; veja as [evidências COFRE](docs/evidence/cofre-individual-2026-10-17.md)
+e a [homologação anterior](docs/evidence/cloud-staging-2026-10-17.md).
 O domínio [capital.camaleaoweb3.com.br](https://capital.camaleaoweb3.com.br/)
 está ativo com SSL no Sites e aponta para esse Site. É um endereço de
 homologação, não um convite para inserir dados reais ou uma validação de piloto.
+
+## Jornada COFRE Individual em homologação
+
+A nova fatia acrescenta abertura de caso pela equipe provisionada, consentimentos de teste, questionário com opções, inventário categórico, sete controles com evidência, rascunho determinístico e relatório legível/imprimível. CI com banco e navegador aprovada; smoke autenticado na Edge hospedada aprovado. Continua exclusivamente sintética; veja o [estado atual](docs/current-state-2026-10-17.md).
+
+No portal hospedado, entre com a conta fictícia de consultoria já fornecida e
+abra **Atendimentos → pessoa fictícia → Criar atendimento fictício**. Complete
+as oito etapas e salve o rascunho. A conta de revisão usa **Diagnósticos** para
+conferir a versão, aprovar e selecionar o destinatário. O cliente vê somente
+versões revisadas e publicadas. As senhas anteriores não foram redefinidas.
 
 ## Testar
 
@@ -31,7 +42,7 @@ Sem pacotes externos para a demonstração ou estes testes.
 git clone https://github.com/ofelipepeixoto/capital-web3-advisor.git
 cd capital-web3-advisor
 # Durante a revisão inicial, a implementação completa está nesta branch:
-git checkout feat/homologation-evidence
+git checkout feat/cofre-individual-journey
 make check
 make demo
 ```
@@ -61,7 +72,8 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | `capital_web3/risk.py` | NAV, dívida, concentração, stress, IL e CLAMM com Decimal |
 | `capital_web3/service.py` | Casos, autorização por objeto e revisão/publicação por versão |
 | `capital_web3/server.py`, `apps/web/` | API local e console/portal de demonstração |
-| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth Supabase e bundle estático; Site v2 de homologação publicado |
+| `apps/staging/`, `scripts/build_staging.mjs` | Portal com Auth Supabase, questionário COFRE e relatório legível; Site v3 publicado |
+| `supabase/functions/advisory-api/cofre.ts` | Validação fechada e regras versionadas do COFRE sintético, sem score |
 | `capital_web3/adapters.py`, `contracts/` | Relatório fictício e contratos; OpenAI real bloqueada |
 | `capital_web3/mcp.py` | Exemplo MCP local por stdio, com ferramentas de leitura |
 | `supabase/` | RLS, workflow humano persistente e API Edge autenticada |
@@ -78,9 +90,9 @@ O recebimento confirma a entrega, sem aprovar estratégia, contrato ou transaç�
 | Cálculos/API/portal local | Implementados; verificar `docs/testing.md` para resultados |
 | OpenAI API | Adapter fictício; consumo pago desativado |
 | MCP | Exemplo local de protocolo; não é servidor remoto homologado |
-| Supabase | Fundação Free compartilhada e Edge v2 hospedadas; fluxo sintético com Auth/RLS registrado, sem piloto real |
+| Supabase | Fundação e migrações COFRE no Free compartilhado; Edge v4, Auth/RLS e smoke sintético registrados, sem piloto real |
 | n8n | JSONs inativos; importação/execução na instância ainda não realizada |
-| Sites | Site v2 publicado no domínio de homologação acima; política de acesso do Sites atualmente `public`, sem validação de uso por clientes |
+| Sites | Site v3 publicado no domínio acima, acesso `public`; documentos exigem Auth/RLS, sem liberação de clientes reais |
 | Hostinger | Roteiro de staging; nenhum serviço/VPS alterado |
 
 ## Plano e evolução
@@ -108,13 +120,17 @@ dos gates descritos nos documentos.
 | [#5](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/5) | RPCs humanos e API autenticada | feat/supabase-foundation |
 | [#6](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/6) | Budget, jobs e replay | feat/authenticated-human-workflow |
 | [#7](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/7) | CI real, correções do portal e evidências | feat/durable-budgets-jobs |
+| [#10](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/10) | Portal autenticado de staging | feat/homologation-evidence |
+| [#12](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/12) | Homologação cloud e domínio | feat/authenticated-staging-portal |
+| [#13](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/13) | Colunas internas protegidas na Data API | feat/cloud-staging-homologation |
+| [#14](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/14) | Jornada COFRE Individual sintética | fix/client-data-api-projection |
 
 As novas camadas de homologação seguem os quatro PRs iniciais:
 `feat/authenticated-human-workflow` → `feat/durable-budgets-jobs` →
-`feat/homologation-evidence`. A última contém o candidato completo para testes.
+`feat/homologation-evidence`. `feat/cloud-staging-homologation` contém o candidato cloud. `feat/cofre-individual-journey` acrescenta a jornada COFRE.
 As branches têm dependências explícitas. Os PRs #1–#7 permanecem abertos.
 O PR #9, de contexto de leitura, foi integrado à branch de homologação.
-Novas camadas seguem para revisão humana. Consulte `docs/homologation.md`.
+PR #11 foi integrada à base de #10 e PR #12 registra cloud. PR #13 protege colunas internas; a jornada COFRE segue na camada posterior. O `main` ainda não contém a stack completa. Novas camadas seguem para revisão humana. Consulte `docs/homologation.md`.
 
 ## Direitos
 

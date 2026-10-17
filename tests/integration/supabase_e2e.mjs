@@ -242,6 +242,16 @@ notify pgrst,'reload schema';`;
     try { await runStagingBrowser({ status, users, ids, handler, origin }); }
     catch (error) { throw new SafeTestFailure(error.message); }
   }
+  const sql = (text) => {
+    const run = spawnSync('psql', ['-X','-q','-v','ON_ERROR_STOP=1'], {
+      input: text, encoding:'utf8', timeout:30000,
+      env:{...process.env,PGHOST:'127.0.0.1',PGPORT:'54322',PGDATABASE:'postgres',PGUSER:'postgres',
+        PGPASSWORD:decodeURIComponent(db.password),PGCONNECT_TIMEOUT:'10'},
+    });
+    requireCondition(!run.error && run.status === 0, 'COFRE synthetic database fixture failed');
+  };
+  const { runCofreIntegration } = await import('./cofre_e2e.mjs');
+  await runCofreIntegration({status,users,result,sql,pass,requireCondition,handler,origin});
   console.log("Edge deployment, cloud staging and production approval remain unvalidated.");
 }
 
