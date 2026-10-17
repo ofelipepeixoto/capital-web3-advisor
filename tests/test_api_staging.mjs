@@ -315,6 +315,8 @@ test("health reports configured mode only, without pretending to test the databa
   const { handler, calls } = setup();
   const result = await handler(request("/health", { headers: { authorization: "" } }));
   assert.equal(result.status, 200); assert.equal((await result.json()).status, "configured");
+  const hosted = await handler(new Request("https://synthetic-project.supabase.co/advisory-api/health"));
+  assert.equal(hosted.status, 200); assert.equal((await hosted.json()).status, "configured");
   assert.equal(calls.length, 0);
 });
 test("arbitrary query parameters and malformed object references do not reach database", async () => {
