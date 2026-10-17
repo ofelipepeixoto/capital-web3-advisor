@@ -57,6 +57,11 @@ export async function runStagingBrowser({ status, users, ids, handler, origin })
       return page;
     }
     gate = 'staff browser login'; const reviewer = await login('rui');
+    // Staff now land on the COFRE case workspace. Exercise the real navigation
+    // before selecting a report; report buttons in the other panel are hidden.
+    gate = 'staff diagnostics navigation';
+    await reviewer.locator('#reports-tab').click();
+    await reviewer.locator('#diagnostics-panel').waitFor({ state: 'visible' });
     gate = 'attachment package open';
     await reviewer.locator('[data-version="' + ids.versionA1 + '"]').click();
     await reviewer.getByText('Esta versão possui anexos.', { exact: false }).waitFor();
