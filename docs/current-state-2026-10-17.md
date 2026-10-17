@@ -10,13 +10,13 @@
 
 ## Revisão e integração
 
-PRs #1 → #2 → #3 → #4 → #5 → #6 → #7 → #10 → #12 são camadas dependentes. #9 foi integrada à base de #7; #11 foi integrada à base de #10. A maioria permanece aberta e #12 foi entregue em rascunho. O `main` ainda não contém a implementação completa. Checks automáticos e revisão de agente não são revisão humana. Nenhum merge foi feito nesta atualização.
+PRs #1 → #2 → #3 → #4 → #5 → #6 → #7 → #10 → #12 → #13 → #14 são camadas dependentes. #9 foi integrada à base de #7; #11 foi integrada à base de #10. #12 e #14 saíram de rascunho após a homologação; #13 também está pronta para revisão. O `main` ainda não contém a implementação completa. Checks automáticos e revisão de agente não são revisão humana. Nenhum merge foi feito nesta atualização.
 
-## Próxima fatia autorizada
+## COFRE Individual implementado e homologado com dados fictícios
 
-COFRE Individual com dados fictícios: roster administrativo → caso → consentimentos separados → objetivos/experiência/liquidez → inventário categórico → sete controles/evidências → rascunho determinístico → revisão independente → publicação ao cliente → leitura legível e impressão.
+Roster administrativo → caso → consentimentos separados → objetivos/experiência/liquidez → inventário categórico → sete controles/evidências → rascunho determinístico → revisão independente → publicação ao cliente → leitura legível e impressão.
 
-O [contrato](cofre-contract-working.md) define o que a implementação aceita. A [revisão de segurança](cofre-security-review-2026-10-17.md) distingue controles implementados e gates pendentes. Resultados de teste/deploy dessa fatia devem ser registrados separadamente; esta página não os presume.
+O [contrato](cofre-contract-working.md) define o que a implementação aceita. A [revisão de segurança](cofre-security-review-2026-10-17.md) distingue controles implementados e gates pendentes. As [evidências COFRE](evidence/cofre-individual-2026-10-17.md) registram CI aprovada, migrações aplicadas, Edge v4 e Site v3 publicados, 16 verificações autenticadas na API hospedada e questionário salvo pela interface no domínio personalizado. A entrega continua fora do `main`, em #13 e #14, aguardando revisão humana da stack.
 
 ## Depois de COFRE
 

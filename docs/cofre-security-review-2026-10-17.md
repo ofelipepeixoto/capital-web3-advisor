@@ -33,8 +33,8 @@ não fornece selo de segurança, score financeiro ou operação de carteira.
 
 ### SEC-01 — Projeção Edge não ocultava identidades internas na Data API
 
-**Estado:** confirmado por leitura de grants/policies; correção SQL preparada,
-execução real ainda precisa ser comprovada no banco descartável.
+**Estado:** correção aplicada; suíte SQL aprovada na CI 39068252716. Implantação
+e verificações cloud estão nas [evidências COFRE](evidence/cofre-individual-2026-10-17.md).
 **Severidade:** média; destinatário autenticado podia correlacionar UUIDs de
 autores/publicadores em linhas publicadas. Não é evidência de vazamento público
 ou acesso ao diagnóstico de outro cliente.
@@ -59,7 +59,7 @@ SELECT amplo por conveniência.
 
 ### SEC-02 — Regras do intake precisam existir também no SQL
 
-**Estado:** confirmado no desenho da API; implementação corretiva em revisão.
+**Estado:** correção implementada e verificada em SQL/HTTP/Chromium na CI; implantada na homologação.
 **Severidade:** alta para integridade do diagnóstico se só a UI/Edge validar.
 
 O papel autenticado pode executar RPCs diretamente. As grants legadas também
@@ -82,7 +82,7 @@ e não reutiliza aprovação da anterior. Conteúdo continua proposta do autor.
 
 ### SEC-03 — Sessão e MFA exigem cobertura das rotas que contornam a Edge
 
-**Estado:** gap legado confirmado; novos guards em revisão. **Severidade:** alta
+**Estado:** guards COFRE implantados, com negativos de sessão/papel/MFA aprovados na CI. **Severidade:** alta
 antes de dados sensíveis reais; risco limitado pelo uso exclusivamente fictício.
 
 O transporte guarda access token em memória, descarta refresh token e limpa
