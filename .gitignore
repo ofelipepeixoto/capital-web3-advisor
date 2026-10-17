@@ -11,3 +11,4 @@ node_modules/
 dist/
 secrets/
 client-data/
+supabase/.temp/
