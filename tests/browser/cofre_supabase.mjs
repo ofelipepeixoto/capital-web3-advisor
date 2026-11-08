@@ -209,7 +209,6 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
       'canceling logout retains the active session and unsaved answer');
     gate = 'confirmed logout clears workflow and questionnaire state';
     analyst.once('dialog', dialog => dialog.accept());
-    analyst.once('dialog', dialog => dialog.accept());
     await analyst.locator('#logout').click();
     await analyst.locator('#login-panel').waitFor({ state: 'visible' });
     expect(await analyst.locator('#cofre-workspace').innerText() === '' && await analyst.locator('#password').inputValue() === '',
