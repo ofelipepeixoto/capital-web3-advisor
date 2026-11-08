@@ -102,6 +102,35 @@ end $$;
 revoke all on function capital_web3_private.protect_lite_report_version() from public,anon,authenticated,service_role;
 create trigger lite_version_immutable before update or delete on capital_web3.advisory_report_versions for each row execute function capital_web3_private.protect_lite_report_version();
 
+-- Lite publication remains disabled until the inherited review/publish authorization
+-- path is hardened for concurrent session and workspace-membership revocation.
+-- The case row serializes this gate against intake saves and prevents a stale
+-- snapshot becoming approved while a newer answer is committed.
+create function capital_web3_private.guard_lite_review_and_publication()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare snapshot_revision integer; current_revision integer; report_status text; requires_complete boolean;
+begin
+ select intake_revision into snapshot_revision from capital_web3_private.cofre_lite_report_snapshots
+  where report_version_id=new.report_version_id and case_id=new.case_id;
+ if not found then return new; end if;
+ perform 1 from capital_web3.advisory_cases where id=new.case_id for update;
+ select revision into current_revision from capital_web3_private.cofre_lite_intakes_v02 where case_id=new.case_id;
+ select content->>'status' into report_status from capital_web3.advisory_report_versions where id=new.report_version_id;
+ if tg_table_name='advisory_publications' then requires_complete:=true; else requires_complete:=new.decision='approved'; end if;
+ if requires_complete then
+  if snapshot_revision is distinct from current_revision or report_status is distinct from 'requires_review' then
+   raise exception 'Lite version is incomplete, blocked or out of date' using errcode='23514';
+  end if;
+ end if;
+ if tg_table_name='advisory_publications' then
+  raise exception 'Lite publication is not yet enabled' using errcode='42501';
+ end if;
+ return new;
+end $$;
+revoke all on function capital_web3_private.guard_lite_review_and_publication() from public,anon,authenticated,service_role;
+create trigger lite_review_gate before insert on capital_web3.advisory_human_reviews for each row execute function capital_web3_private.guard_lite_review_and_publication();
+create trigger lite_publication_gate before insert on capital_web3.advisory_publications for each row execute function capital_web3_private.guard_lite_review_and_publication();
+
 -- This RPC receives only the expected revision and an idempotency key. It never
 -- accepts report content from the caller. Existing review/publication RPCs still
 -- enforce reviewer separation and version-bound hashes.
