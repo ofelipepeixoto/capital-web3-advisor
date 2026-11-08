@@ -76,6 +76,7 @@ insert into cofre_test_data select 'content',jsonb_build_object(
  'profile',value->'profile','inventory',value->'inventory',
  'controls',(select jsonb_agg(jsonb_build_object('id',k)||v order by k) from jsonb_each(value->'controls') e(k,v)),
  'human_review',jsonb_build_object('approved',false)) from cofre_test_data where label='intake';
+update cofre_test_data set value=capital_web3_private.cofre_canonical_report(pg_temp.data('intake'),to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) where label='content';
 select capital_web3_private.validate_cofre_intake(pg_temp.data('intake'));
 select pg_temp.require(true,'valid closed synthetic SQL intake accepted');
 
@@ -121,6 +122,9 @@ insert into cofre_test_data values('case',capital_web3.advisory_create_cofre_cas
  '83000000-0000-0000-0000-000000000001','13000000-0000-0000-0000-000000000001','73000000-0000-0000-0000-000000000005'));
 select pg_temp.require(capital_web3.advisory_create_cofre_case('83000000-0000-0000-0000-000000000001',
  '13000000-0000-0000-0000-000000000001','73000000-0000-0000-0000-000000000005')=pg_temp.data('case'),'case creation retry returns original case');
+select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
+ pg_temp.data('intake'),jsonb_set(pg_temp.data('content'),'{summary}','"fabricated synthetic safety claim"'),0,'73000000-0000-0000-0000-000000000089')$q$,
+ '22023','direct RPC denies fabricated report text');
 insert into cofre_test_data values('saved',capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000006'));
 select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
