@@ -153,7 +153,7 @@ test('legacy data that changes before explicit import is not loaded or silently 
     {data:{revision:2,intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals}}};
   const ui=new LiteSimulation(new Element('section'),{api,cases:()=>[{id:'case-1'}],confirm:()=>true});
   ui.caseId='case-1';await ui.load();await ui.importLegacy();
-  assert.equal(ui.loaded,false);assert.equal(ui.legacyAvailable,true);assert.match(ui.notice,/Não foi possível carregar/);assert.deepEqual(ui.answers,{});
+  assert.equal(ui.loaded,false);assert.equal(ui.legacyAvailable,true);assert.match(ui.notice,/sinais anteriores mudaram/i);assert.match(ui.notice,/Carregar respostas do atendimento/);assert.deepEqual(ui.answers,{});
 });
 
 test('new blank intake requires explicit confirmation when legacy data exists', async () => {
