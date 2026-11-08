@@ -47,7 +47,7 @@ begin
  if wid is null or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  select coalesce(max(revision),0) into rev from capital_web3.cofre_intakes where case_id=p_case_id;
  select jsonb_build_object('intake',intake,'revision',revision,'base_revision',base_revision,'stale',base_revision<>rev,'updated_at',updated_at) into result
- from capital_web3_private.cofre_partial_intakes where case_id=p_case_id and cofre_partial_intakes.actor=advisory_cofre_partial_get.v_actor;
+ from capital_web3_private.cofre_partial_intakes where case_id=p_case_id and cofre_partial_intakes.actor=v_actor;
  return result;
 end $$;
 create function capital_web3.advisory_cofre_partial_save(p_case_id uuid,p_intake jsonb,p_expected_revision integer,p_base_revision integer,p_idempotency_key uuid)
@@ -62,11 +62,11 @@ begin
  perform 1 from capital_web3.advisory_cases where id=p_case_id for update;
  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text||':partial:'||p_idempotency_key::text,0));
  req:=jsonb_build_object('case',p_case_id,'intake',p_intake,'revision',p_expected_revision,'base_revision',p_base_revision);
- select * into old from capital_web3_private.cofre_partial_receipts where cofre_partial_receipts.actor=advisory_cofre_partial_save.v_actor and key=p_idempotency_key;
+ select * into old from capital_web3_private.cofre_partial_receipts where cofre_partial_receipts.actor=v_actor and key=p_idempotency_key;
  if found then if old.request<>req then raise exception 'key conflict' using errcode='23505'; end if; return old.result; end if;
  select coalesce(max(revision),0) into rev from capital_web3.cofre_intakes where case_id=p_case_id;
  if rev<>p_base_revision then raise exception 'final version changed' using errcode='23514'; end if;
- select revision into r from capital_web3_private.cofre_partial_intakes where case_id=p_case_id and cofre_partial_intakes.actor=advisory_cofre_partial_save.v_actor;
+ select revision into r from capital_web3_private.cofre_partial_intakes where case_id=p_case_id and cofre_partial_intakes.actor=v_actor;
  r:=coalesce(r,0);
  if r<>p_expected_revision then raise exception 'partial changed' using errcode='23514'; end if;
  insert into capital_web3_private.cofre_partial_intakes(case_id,actor,revision,base_revision,intake) values(p_case_id,v_actor,r+1,rev,p_intake)
