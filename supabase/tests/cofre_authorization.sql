@@ -154,6 +154,29 @@ insert into cofre_test_data values('lite_saved',capital_web3.advisory_lite_signa
 select pg_temp.require((pg_temp.data('lite_saved')->>'revision')::integer=1,'Lite saves first revision');
 select pg_temp.require(capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000100')=pg_temp.data('lite_saved'),'Lite retry is idempotent');
 select pg_temp.require(capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)#>>'{intake,signals,urgency}'='unknown','Lite persists unknown');
+
+-- Generate Lite first, then Individual: report identities and counters must remain separate.
+insert into cofre_test_data values('lite_v02',jsonb_build_object(
+ 'schema_version','cofre-lite-intake-0.2','synthetic',true,'consents',jsonb_build_object('assessment',true,'storage',true),
+ 'profile',jsonb_build_object('experience','unknown'),
+ 'controls',jsonb_build_object('backup','unknown','vault','unknown','apps','unknown','spending','unknown','testing','unknown','watch','unknown','recovery','unknown','secret_exposure','unknown','source','unknown','permissions','unknown','payload','unknown','routine','unknown'),
+ 'signals',pg_temp.data('lite')->'signals'));
+select capital_web3.advisory_lite_intake_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite_v02'),0,'73000000-0000-0000-0000-000000000200',1);
+insert into cofre_test_data values('lite_draft',capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,1,'73000000-0000-0000-0000-000000000201'));
+select pg_temp.require(capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,1,'73000000-0000-0000-0000-000000000201')=pg_temp.data('lite_draft'),'Lite draft retry returns identical version');
+select pg_temp.require(capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,1,'73000000-0000-0000-0000-000000000202')=pg_temp.data('lite_draft'),'same saved intake yields same immutable draft');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,2,'73000000-0000-0000-0000-000000000201')$q$,'23505','Lite draft key cannot be reused for another revision');
+select pg_temp.require((select content->>'status'='incomplete' and content->'score'='null'::jsonb and content#>>'{human_review,status}'='pending' from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_draft')->>'report_version_id')::uuid),'server generates incomplete no-score draft');
+insert into cofre_test_data values('lite_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_draft')->>'report_version_id')::uuid));
+select pg_temp.expect_error($q$select capital_web3.advisory_review_report((pg_temp.data('lite_draft')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_package')->>'content_sha256',pg_temp.data('lite_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000203')$q$,'42501','Lite author cannot approve own version');
+select pg_temp.expect_error($q$select * from capital_web3_private.cofre_lite_report_snapshots$q$,'42501','Lite snapshot is private');
+select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,1,'73000000-0000-0000-0000-000000000204')$q$,'42501','client cannot create Lite draft');
+select pg_temp.require((select count(*)=0 from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_draft')->>'report_version_id')::uuid),'client cannot see unpublished Lite draft');
+select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-0000-0000-000000000011');
+select capital_web3.advisory_review_report((pg_temp.data('lite_draft')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_package')->>'content_sha256',pg_temp.data('lite_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000205');
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite'),'{signals,urgency}','"yes"'),0,'73000000-0000-0000-0000-000000000100')$q$,'23505','Lite rejects changed idempotency payload');
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000101')$q$,'23514','Lite denies stale revision');
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
@@ -220,6 +243,7 @@ select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((p
  pg_temp.data('intake'),jsonb_set(jsonb_set(jsonb_set(pg_temp.data('content'),'{as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,0,as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,1,as_of}','"2000-01-01T00:00:00.000Z"'),1,'73000000-0000-0000-0000-000000000090')$q$,
  '22023','new write with expired report timestamp denied');
 select pg_temp.require((select count(*)=1 from capital_web3.cofre_intakes where case_id=(pg_temp.data('case')->>'case_id')::uuid),'assigned analyst can read intake');
+select pg_temp.require((select count(distinct report_id)=2 from capital_web3.advisory_report_versions where id in ((pg_temp.data('lite_draft')->>'report_version_id')::uuid,(pg_temp.data('saved')->>'report_version_id')::uuid)),'Lite and Individual versions use separate report identities');
 select pg_temp.require((capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)->>'stale')::boolean,'partial becomes stale after report');
 insert into cofre_test_data values('restore',capital_web3.advisory_cofre_partial_restore((pg_temp.data('case')->>'case_id')::uuid,1,1,'73000000-0000-0000-0000-000000000094'));
 select pg_temp.require((pg_temp.data('restore')->>'revision')::integer=2,'explicit restore advances revision');
@@ -355,5 +379,5 @@ select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_get((p
 select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),1,1,'73000000-0000-0000-0000-000000000092')$q$,'42501','revoked analyst session cannot write partial');
 reset role;
 select pg_temp.require((select count(*)=1 from capital_web3.cofre_intakes where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no partial intake version');
-select pg_temp.require((select count(*)=1 from capital_web3.advisory_report_versions where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no extra report version');
+select pg_temp.require((select count(*)=2 from capital_web3.advisory_report_versions where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no extra report version');
 rollback;
