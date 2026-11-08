@@ -25,6 +25,7 @@ export async function runCofreIntegration({ status, users, result, sql, pass, re
   const workspaceA = randomUUID(), workspaceB = randomUUID();
   // Only crypto/server UUIDs and constant fictitious labels enter controlled SQL.
   await sql(`begin;
+update capital_web3_private.cofre_partial_limits set partial_enabled=true where singleton=true;
 insert into capital_web3_private.cofre_workspaces(id,label,staff_mfa_required) values
 ('${workspaceA}','COFRE synthetic primary',false),('${workspaceB}','COFRE synthetic foreign',false);
 insert into capital_web3_private.cofre_workspace_members(workspace_id,user_id,display_name,member_role) values
@@ -41,6 +42,8 @@ do $$ begin
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','INSERT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','INSERT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_limits','UPDATE')
+ or exists(select 1 from information_schema.columns where table_schema='capital_web3_private' and table_name='cofre_partial_receipts' and column_name='request')
  or has_column_privilege('authenticated','capital_web3.cofre_intakes','created_by','SELECT') then
  raise exception 'unexpected COFRE privileges'; end if;
 end $$;
@@ -108,6 +111,23 @@ commit;`);
   pass('COFRE concurrent partial edits preserve one winner and reject one stale revision', racedPartial.map(r=>r.status).sort().join(',')==='200,409');
   const fetchedPartial = await result('ana', partialPath);
   pass('COFRE partial can be resumed without filling empty fields', fetchedPartial.status === 200 && fetchedPartial.body.data.intake.profile.objective === '' && fetchedPartial.body.data.stale === false);
+  await sql('update capital_web3_private.cofre_partial_limits set partial_enabled=false where singleton=true');
+  const directDisabled=await local('ana','/rest/v1/rpc/advisory_cofre_partial_get',{p_case_id:caseId});
+  pass('direct PostgREST partial RPC is denied while database switch is off', directDisabled.status===403);
+  const guardedFinal={intake:syntheticCofreIntake(),expected_revision:0,idempotency_key:randomUUID()};
+  pass('final report is blocked while hidden partial is preserved', (await result('ana',intakePath,guardedFinal)).status===409);
+  await sql('update capital_web3_private.cofre_partial_limits set partial_enabled=true where singleton=true');
+
+  // Two cases, same actor: quota must remain bounded under concurrent writes.
+  const extraCases = await Promise.all([0,1].map(() => result('ana', '/cofre/cases', { ...create, idempotency_key: randomUUID() })));
+  requireCondition(extraCases.every(row => row.status === 200 && UUID.test(row.body.data.case_id)), 'quota fixture cases created');
+  await sql('update capital_web3_private.cofre_partial_limits set max_receipts_per_actor=3 where singleton=true');
+  // Existing actor has exactly two receipts (initial save and successful concurrency winner).
+  const quotaBodies = extraCases.map(() => ({ intake: partialIntake, expected_revision: 0, base_revision: 0, idempotency_key: randomUUID() }));
+  const limited = await Promise.all(extraCases.map((row,index) => result('ana', '/cofre/cases/' + row.body.data.case_id + '/partial', quotaBodies[index])));
+  pass('COFRE partial receipt quota serializes concurrent cross-case writes', limited.map(row => row.status).sort().join(',')==='200,429');
+  pass('COFRE previous idempotent retry works at capacity', (await result('ana', partialPath, partialSave)).status === 200);
+  await sql('update capital_web3_private.cofre_partial_limits set max_receipts_per_actor=1000 where singleton=true');
   const save = { intake: syntheticCofreIntake(), expected_revision: 0, idempotency_key: randomUUID() };
   const marker = 'fictional_secret_marker_do_not_echo';
   for (const mutate of [
@@ -131,6 +151,15 @@ commit;`);
   requireCondition(initial.status === 200 && initial.body.data?.revision === 1 && UUID.test(versionId), 'COFRE server generated first draft');
   const afterFinal = await result('ana', partialPath);
   pass('COFRE partial remains preserved and marked stale after final version', afterFinal.status === 200 && afterFinal.body.data.stale === true);
+  const restorePath=partialPath+'/restore';
+  const restore={expected_revision:afterFinal.body.data.revision,base_revision:1,idempotency_key:randomUUID()};
+  pass('COFRE client cannot restore staff partial', (await result('clientA',restorePath,restore)).status===404);
+  const racedRestore=await Promise.all([result('ana',restorePath,restore),result('ana',restorePath,restore)]);
+  pass('COFRE restore retries preserve one explicit operation', racedRestore.every(row=>row.status===200 && row.body.data.revision===restore.expected_revision+1));
+  const restored=await result('ana',partialPath);
+  pass('COFRE restore preserves original answers without changing final version', restored.status===200 && restored.body.data.stale===false && restored.body.data.intake.profile.objective==='');
+  pass('COFRE restore rejects stale revision with a new key', (await result('ana',restorePath,{...restore,idempotency_key:randomUUID()})).status===409);
+
   const retry = await result('ana', intakePath, save);
   pass('COFRE same save retry returns the exact immutable revision', retry.status === 200 &&
     retry.body.data.report_version_id === versionId && retry.body.data.revision === 1);

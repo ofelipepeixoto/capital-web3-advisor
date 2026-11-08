@@ -237,6 +237,7 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         if (!response.ok) {
           const code = isObject(result) ? result.code : null;
           if (response.status >= 500) throw new ApiError(503, "upstream_unavailable");
+          if (['/rpc/advisory_cofre_partial_save','/rpc/advisory_cofre_partial_restore'].some(suffix => pathname.endsWith(suffix)) && code === 'P0001' && isObject(result) && result.message === 'partial receipt capacity reached') throw new ApiError(429, 'partial_capacity_reached');
           if (code === "23505" || code === "23514") throw new ApiError(409, "state_conflict");
           if (code === "22023" || code === "22P02") throw new ApiError(400, "invalid_request");
           // Object denied and nonexistent have the same public response.
@@ -252,7 +253,13 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         if (value === null) throw new ApiError(401, 'authentication_required');
         if (!isObject(value) || typeof value.mfa_required !== 'boolean' ||
             !['aal1','aal2'].includes(String(value.assurance_level))) throw new ApiError(503, 'upstream_unavailable');
-        return respond(200, { mfa_required: value.mfa_required, assurance_level: value.assurance_level, request_id: requestId });
+        let partialEnabled = false;
+        if (env('COFRE_PARTIAL_ENABLED') === 'true') {
+          const capability = await rpc('advisory_cofre_partial_capability', {});
+          if (typeof capability !== 'boolean') throw new ApiError(503, 'upstream_unavailable');
+          partialEnabled = capability;
+        }
+        return respond(200, { mfa_required: value.mfa_required, assurance_level: value.assurance_level, partial_intake_enabled: partialEnabled, request_id: requestId });
       }
       if (request.method === 'GET' && path === '/cofre/workspaces') {
         return respond(200, { data: await rpc('advisory_cofre_workspaces', {}), request_id: requestId });
@@ -266,8 +273,18 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         });
         return respond(200, { data, request_id: requestId });
       }
+      const restoreRoute = path.match(/^\/cofre\/cases\/([^/]+)\/partial\/restore$/);
+      if (restoreRoute && request.method === 'POST') {
+        if (env('COFRE_PARTIAL_ENABLED') !== 'true') throw new ApiError(503, 'feature_unavailable');
+        const body = await readBody(request);
+        exactKeys(body, ['expected_revision', 'base_revision', 'idempotency_key']);
+        if (![body.expected_revision,body.base_revision].every(v => Number.isSafeInteger(v) && (v as number)>=1 && (v as number)<=10000)) throw new ApiError(400, 'invalid_request');
+        const data = await rpc('advisory_cofre_partial_restore', {p_case_id:assertUuid(restoreRoute[1]),p_expected_revision:body.expected_revision,p_base_revision:body.base_revision,p_idempotency_key:assertUuid(body.idempotency_key)});
+        return respond(200, {data, request_id:requestId});
+      }
       const partialRoute = path.match(/^\/cofre\/cases\/([^/]+)\/partial$/);
       if (partialRoute) {
+        if (env('COFRE_PARTIAL_ENABLED') !== 'true') throw new ApiError(503, 'feature_unavailable');
         const caseId = assertUuid(partialRoute[1]);
         if (request.method === 'GET') return respond(200, { data: await rpc('advisory_cofre_partial_get', { p_case_id: caseId }), request_id: requestId });
         if (request.method === 'POST') {

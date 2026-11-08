@@ -111,8 +111,8 @@ commit;`);
     pass('real password Auth session starts at AAL1', claims(aal1).aal === 'aal1' && claims(aal1).sub === staff.id);
     const requirements = await api(aal1, '/access-requirements');
     pass('AAL1 access requirements reveal only the MFA requirement', requirements.status === 200 &&
-      requirements.body.mfa_required === true && requirements.body.assurance_level === 'aal1' &&
-      Object.keys(requirements.body).every(key => ['mfa_required', 'assurance_level', 'request_id'].includes(key)));
+      requirements.body.mfa_required === true && requirements.body.assurance_level === 'aal1' && typeof requirements.body.partial_intake_enabled === 'boolean' &&
+      Object.keys(requirements.body).every(key => ['mfa_required', 'assurance_level', 'partial_intake_enabled', 'request_id'].includes(key)));
     const before = await api(aal1, '/cofre/workspaces');
     pass('required MFA withholds the roster from real AAL1 session', before.status === 200 && Array.isArray(before.body.data) && before.body.data.length === 0);
     const create = { workspace_id: workspaceId, client_user_id: client.id, idempotency_key: randomUUID() };

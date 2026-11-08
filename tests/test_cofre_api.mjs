@@ -13,7 +13,7 @@ const CASE = "20000000-0000-0000-0000-000000000001";
 const KEY = "90000000-0000-0000-0000-000000000001";
 const VERSION = "40000000-0000-0000-0000-000000000001";
 const TOKEN = "synthetic.jwt.signature";
-const config = { SUPABASE_URL: BASE, SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic_test_only", ADVISORY_ALLOWED_ORIGINS: ORIGIN };
+const config = { SUPABASE_URL: BASE, SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic_test_only", ADVISORY_ALLOWED_ORIGINS: ORIGIN, COFRE_PARTIAL_ENABLED: 'true' };
 const reply = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 
 function setup({ auth = { id: USER, is_anonymous: false }, authStatus = 200, data = [], dbStatus = 200 } = {}) {
@@ -196,4 +196,44 @@ test('partial intake accepts only consented closed synthetic records with honest
     assert.equal((await test.handler(request(`/cofre/cases/${CASE}/partial`, {method:'POST',body:changed}))).status, 400);
     assert.equal(test.calls.length, 1);
   }
+});
+
+test('partial flag is disabled unless explicitly enabled, even if RPC is absent', async () => {
+  const disabled={...config}; delete disabled.COFRE_PARTIAL_ENABLED; const calls=[];
+  const handler=createHandler(name=>disabled[name],async (url,init)=>{calls.push(String(url)); return String(url).endsWith('/auth/v1/user')?reply({id:USER,is_anonymous:false}):reply({code:'PGRST202'},404);});
+  const result=await handler(request(`/cofre/cases/${CASE}/partial`));
+  assert.equal(result.status,503); assert.equal(calls.length,1);
+});
+
+test('partial capacity is reported without echoing private upstream response', async () => {
+  const h=setup({data:{code:'P0001',message:'partial receipt capacity reached',details:'private'},dbStatus:400});
+  const body={intake:intake(),expected_revision:0,base_revision:0,idempotency_key:KEY};
+  const response=await h.handler(request(`/cofre/cases/${CASE}/partial`, {method:'POST',body}));
+  assert.equal(response.status,429); assert.ok(!(await response.text()).includes('private'));
+});
+
+test('stale restore permits only revision metadata and denies forged intake or foreign state', async () => {
+  const body={expected_revision:2,base_revision:1,idempotency_key:KEY}; const h=setup({data:{revision:3,base_revision:1}});
+  const response=await h.handler(request(`/cofre/cases/${CASE}/partial/restore`,{method:'POST',body}));
+  assert.equal(response.status,200); const sent=JSON.parse(h.calls[1].init.body);
+  assert.deepEqual(Object.keys(sent).sort(),['p_base_revision','p_case_id','p_expected_revision','p_idempotency_key'].sort());
+  const forged=setup(); assert.equal((await forged.handler(request(`/cofre/cases/${CASE}/partial/restore`,{method:'POST',body:{...body,intake:intake()}}))).status,400); assert.equal(forged.calls.length,1);
+  const denied=setup({data:{code:'42501',message:'private'},dbStatus:403}); assert.equal((await denied.handler(request(`/cofre/cases/${CASE}/partial/restore`,{method:'POST',body}))).status,404);
+});
+
+test('receipt capacity also fails closed for restore', async () => {
+  const h=setup({data:{code:'P0001',message:'partial receipt capacity reached',details:'private'},dbStatus:400});
+  const response=await h.handler(request(`/cofre/cases/${CASE}/partial/restore`, {method:'POST',body:{expected_revision:1,base_revision:1,idempotency_key:KEY}}));
+  assert.equal(response.status,429); assert.ok(!(await response.text()).includes('private'));
+});
+
+test('capability requires the database switch as well as the Edge flag', async () => {
+  const calls=[]; const handler=createHandler(name=>config[name],async (url,init)=>{
+    calls.push(String(url)); if(String(url).endsWith('/auth/v1/user')) return reply({id:USER,is_anonymous:false});
+    if(String(url).endsWith('/rpc/advisory_access_requirements')) return reply({mfa_required:false,assurance_level:'aal1'});
+    if(String(url).endsWith('/rpc/advisory_cofre_partial_capability')) return reply(false);
+    throw Error('unexpected request');
+  });
+  const response=await handler(request('/access-requirements')); assert.equal(response.status,200);
+  assert.equal((await response.json()).partial_intake_enabled,false); assert.equal(calls.length,3);
 });

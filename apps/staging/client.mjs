@@ -53,7 +53,7 @@ export class PortalClient {
       const messages = { 400: 'Confira os dados informados.', 401: 'Sessão inválida. Entre novamente.',
         403: 'Acesso não autorizado.', 404: 'Diagnóstico indisponível para esta conta.',
         409: 'Esta versão mudou ou a ação já foi concluída. Atualize para conferir.',
-        429: 'Limite de tentativas. Aguarde antes de tentar novamente.' };
+        429: 'Limite de operações alcançado. Tente mais tarde ou procure a equipe.' };
       const error = new Error(messages[response.status] || 'Serviço indisponível. Tente novamente mais tarde.');
       error.status = response.status; throw error;
     }
