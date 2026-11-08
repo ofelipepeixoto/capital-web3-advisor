@@ -58,8 +58,8 @@ export function liteSummary(answers) {
   return { critical, missing, signals, state: critical ? 'blocked' : missing ? 'incomplete' : 'review' };
 }
 export class LiteSimulation {
-  constructor(root, { api = null, cases = () => [], confirm = () => false } = {}) {
-    Object.assign(this, { root, api, cases, confirm }); this.epoch = 0; this.clear();
+  constructor(root, { api = null, cases = () => [], confirm = () => false, onGenerated = async () => {} } = {}) {
+    Object.assign(this, { root, api, cases, confirm, onGenerated }); this.epoch = 0; this.clear();
   }
   clear() {
     this.epoch++; this.answers = {}; this.step = 0; this.dirty = false; this.caseId = ''; this.revision = 0;
@@ -140,6 +140,25 @@ export class LiteSimulation {
       if (epoch === this.epoch && id === this.caseId) this.notice = error.status === 409 ? 'Outra revisão alterou as respostas. Suas respostas continuam nesta sessão; confira antes de carregar a versão salva.' : error.status === 429 ? 'Limite de salvamentos atingido. Procure a equipe.' : 'Não foi possível confirmar o salvamento. Suas respostas continuam nesta sessão.';
     } finally { if (epoch === this.epoch && id === this.caseId) { this.pending = false; this.render(); } }
   }
+  async generateDraft() {
+    if (!this.api || !this.caseId || !this.loaded || this.pending || this.dirty || this.revision < 1 || !this.consents.assessment || !this.consents.storage) return;
+    const epoch = this.epoch, id = this.caseId, revision = this.revision;
+    const fingerprint = JSON.stringify({ action: 'lite-report', id, revision });
+    if (!this.keys.has(fingerprint)) this.keys.set(fingerprint, crypto.randomUUID());
+    this.pending = true; this.notice = 'Gerando rascunho a partir das respostas salvas…'; this.render();
+    let reportId;
+    try {
+      const result = await this.api('/cofre/cases/' + id + '/lite-report', { expected_revision: revision, idempotency_key: this.keys.get(fingerprint) });
+      if (epoch !== this.epoch || id !== this.caseId) return;
+      if (result.data?.case_id !== id || result.data?.intake_revision !== revision || typeof result.data?.report_version_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.data.report_version_id)) throw new Error('Resposta inválida.');
+      reportId = result.data.report_version_id;
+    } catch (error) {
+      if (epoch === this.epoch && id === this.caseId) this.notice = error.status === 409 ? 'As respostas salvas mudaram. Recarregue o atendimento antes de gerar o rascunho.' : error.status === 429 ? 'Limite de geração atingido. Procure a equipe.' : 'Não foi possível confirmar a geração. Tente novamente; o pedido será repetido com a mesma chave.';
+    } finally { if (epoch === this.epoch && id === this.caseId) { this.pending = false; this.render(); } }
+    if (!reportId || epoch !== this.epoch || id !== this.caseId) return;
+    try { await this.onGenerated(reportId); }
+    catch { if (epoch === this.epoch && id === this.caseId) { this.notice = 'Rascunho gerado. Não foi possível abri-lo agora; procure-o na lista de diagnósticos.'; this.render(); } }
+  }
   reconcile() {
     if (this.caseId && !this.cases().some(item => item.id === this.caseId)) { this.clear(); return false; }
     return true;
@@ -150,9 +169,10 @@ export class LiteSimulation {
     const notice = node('p', 'Homologação: salve as respostas fictícias em um atendimento autorizado. Não informe dados reais, endereços, senhas, códigos ou segredos.');
     notice.className = 'notice'; this.root.replaceChildren(notice, heading);
     const progress = node('progress'); progress.max = SECTIONS.length; progress.value = this.step + 1; progress.setAttribute('aria-label', 'Etapa do exercício'); this.root.append(progress);
-    const result = node('p'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite'); let summaryStatus;
+    const result = node('p'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite'); let summaryStatus, generate;
     const updateAlert = () => { const value = liteSummary(this.answers);
       result.textContent = value.critical ? 'Alerta crítico: interrompa a interação e procure atendimento humano adequado. Não informe segredos.' : value.signals.flagged_signals ? 'Há sinais relatados. Pause e peça revisão humana antes de agir.' : '';
+      if (generate) generate.disabled = this.pending || this.dirty || !this.consents.assessment || !this.consents.storage || this.revision < 1;
       if (summaryStatus) summaryStatus.textContent = value.critical ? 'Alerta crítico. Interrompa a interação e peça orientação humana adequada.' : value.missing ? `Exercício incompleto: ${value.missing} respostas não informadas ou desconhecidas.` : 'Respostas preenchidas. A equipe deve revisar o contexto e as evidências antes de qualquer conclusão.';
     };
     updateAlert(); this.root.append(result);
@@ -179,9 +199,11 @@ export class LiteSimulation {
         group.append(node('p', 'As marcações confirmam este salvamento. Desmarcá-las impede novos salvamentos e não revoga automaticamente dados já armazenados.'));
         for (const [key,text] of [['assessment','Autorizo a avaliação das respostas fictícias.'],['storage','Autorizo salvar as respostas fictícias neste atendimento.']]) {
           const caption = node('label'); caption.className = 'choice'; const input = node('input'); input.type = 'checkbox'; input.checked = this.consents[key]; input.disabled = this.pending;
-          input.addEventListener('change', () => { this.consents[key] = input.checked; }); caption.append(input, document.createTextNode(text)); group.append(caption);
+          input.addEventListener('change', () => { this.consents[key] = input.checked; this.dirty = true; updateAlert(); }); caption.append(input, document.createTextNode(text)); group.append(caption);
         }
         const save = node('button', 'Salvar respostas no atendimento'); save.type = 'button'; save.disabled = this.pending; save.addEventListener('click', () => this.save()); group.append(save);
+        generate = node('button', 'Gerar rascunho para revisão'); generate.type = 'button'; generate.disabled = this.pending || this.dirty || !this.consents.assessment || !this.consents.storage || this.revision < 1; generate.addEventListener('click', () => this.generateDraft());
+        group.append(generate, node('p', 'O rascunho usa somente a revisão salva. Lacunas e alertas permanecem visíveis; a entrega ao cliente ainda não está disponível.'));
       }
       const status = node('p', this.notice); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); group.append(status); this.root.append(group);
     }
@@ -203,7 +225,7 @@ export class LiteSimulation {
     }
     if (this.step === SECTIONS.length - 1) {
       const summary = node('div'), title = node('h3', 'Panorama deste exercício'); summaryStatus = node('p'); summary.append(title, summaryStatus); updateAlert();
-      summary.append(node('p', 'Respostas declaradas não comprovam controles. Este exercício não gera pontuação, aprovação, monitoramento ou diagnóstico.'));
+      summary.append(node('p', 'Respostas declaradas não comprovam controles. O rascunho requer revisão humana e não gera pontuação, aprovação nem monitoramento.'));
       summary.className = 'boundary'; this.root.append(summary);
     }
     const actions = node('div'); actions.className = 'actions';

@@ -162,3 +162,31 @@ test('new blank intake requires explicit confirmation when legacy data exists', 
   ui.caseId='case-1';await ui.load();ui.startWithoutLegacy();assert.equal(ui.loaded,false);assert.equal(ui.legacyAvailable,true);
   confirmed=true;ui.startWithoutLegacy();assert.equal(ui.loaded,true);assert.equal(ui.legacyRevision,4);assert.deepEqual(ui.consents,{assessment:false,storage:false});
 });
+
+test('rascunho exige versão salva e repete a mesma chave após resposta incerta', async () => {
+  const requests = [], opened = [];
+  let fail = true;
+  const id = '11111111-1111-4111-8111-111111111111';
+  const report = '22222222-2222-4222-8222-222222222222';
+  const api = async (path, body) => { requests.push({path, body}); if (fail) { fail = false; throw Error('network'); } return {data:{case_id:id,intake_revision:3,report_version_id:report}}; };
+  const root = new Element('section'), ui = new LiteSimulation(root, { api, cases: () => [{id}], onGenerated: async value => opened.push(value) });
+  ui.caseId=id; ui.loaded=true; ui.revision=3; ui.consents={assessment:true,storage:true}; ui.dirty=true; ui.render();
+  assert.equal(find(root, 'button', 'Gerar rascunho para revisão').disabled, true); await ui.generateDraft(); assert.equal(requests.length,0);
+  ui.dirty=false; ui.render(); assert.equal(find(root, 'button', 'Gerar rascunho para revisão').disabled, false);
+  await ui.generateDraft(); assert.match(ui.notice, /Não foi possível confirmar/); assert.deepEqual(opened,[]);
+  await ui.generateDraft(); assert.deepEqual(opened,[report]);
+  assert.equal(requests[0].body.idempotency_key,requests[1].body.idempotency_key);
+  assert.deepEqual(Object.keys(requests[0].body).sort(),['expected_revision','idempotency_key']);
+  assert.equal(requests[0].body.expected_revision,3);
+  ui.render(); select(root,'lite-experience','beginner'); assert.equal(find(root,'button','Gerar rascunho para revisão').disabled,true);
+});
+
+test('conflito, troca de sessão e falha de navegação não inventam entrega', async () => {
+  const id='11111111-1111-4111-8111-111111111111', report='22222222-2222-4222-8222-222222222222'; let release, mode='conflict', opened=0;
+  const api = async () => { if (mode==='conflict') throw Object.assign(Error('conflict'), {status:409}); if (mode==='late') return new Promise(resolve => {release=resolve}); return {data:{case_id:id,intake_revision:2,report_version_id:report}}; };
+  const ui = new LiteSimulation(new Element('section'),{api,cases:()=>[{id}],onGenerated:async()=>{opened++;throw Error('offline')}});
+  ui.caseId=id; ui.loaded=true; ui.revision=2; ui.consents={assessment:true,storage:true};
+  await ui.generateDraft(); assert.match(ui.notice,/Recarregue/); assert.equal(opened,0);
+  mode='late'; const pending=ui.generateDraft(); ui.clear(); release({data:{case_id:id,intake_revision:2,report_version_id:report}}); await pending; assert.equal(opened,0);
+  ui.caseId=id; ui.loaded=true; ui.revision=2; ui.consents={assessment:true,storage:true}; mode='success'; await ui.generateDraft(); assert.equal(opened,1); assert.match(ui.notice,/Rascunho gerado/);
+});
