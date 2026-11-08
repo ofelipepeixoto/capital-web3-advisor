@@ -3,6 +3,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { COFRE_CONTROL_IDS } from '../../supabase/functions/advisory-api/cofre.ts';
+import { SIGNAL_IDS } from '../../supabase/functions/advisory-api/cofre-lite-rules.ts';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SHA = /^[a-f0-9]{64}$/;
@@ -39,6 +40,9 @@ do $$ begin
  or has_table_privilege('authenticated','capital_web3_private.cofre_workspace_members','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','INSERT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_lite_signals','SELECT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_lite_signals','INSERT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_lite_signal_receipts','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','INSERT')
  or has_column_privilege('authenticated','capital_web3.cofre_intakes','created_by','SELECT') then
@@ -81,6 +85,25 @@ commit;`);
   const caseId = created[0].body.data?.case_id;
   requireCondition(UUID.test(caseId), 'COFRE case RPC returned an actual UUID');
   pass('COFRE concurrent creation retries return one case', created.every(row => row.status === 200 && row.body.data.case_id === caseId));
+  const litePath = '/cofre/cases/' + caseId + '/lite-signals';
+  const liteDraft = {schema_version:'cofre-lite-signals-0.1', synthetic:true, consents:{assessment:true,storage:true},
+    signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
+  const liteSave = {intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
+  pass('Lite denies client and foreign analyst', (await result('clientA',litePath,liteSave)).status===404 && (await result('authorB',litePath,liteSave)).status===404);
+  const liteNoConsent=fresh(liteSave);liteNoConsent.intake.consents.storage=false;
+  pass('Lite rejects absent consent before persistence', (await result('ana',litePath,liteNoConsent)).status===400);
+  const liteSecret=fresh(liteSave);liteSecret.intake.seed='synthetic-secret-marker';
+  const deniedSecret=await result('ana',litePath,liteSecret);
+  pass('Lite rejects extra secret fields without echo', deniedSecret.status===400 && !JSON.stringify(deniedSecret.body).includes('synthetic-secret-marker'));
+  const retryLite=await Promise.all([result('ana',litePath,liteSave),result('ana',litePath,liteSave)]);
+  pass('Lite same key retry is idempotent', retryLite.every(r=>r.status===200 && r.body.data.revision===1));
+  const liteA=fresh(liteSave); liteA.expected_revision=1; liteA.idempotency_key=randomUUID(); liteA.intake.signals.urgency='yes';
+  const liteB=fresh(liteSave); liteB.expected_revision=1; liteB.idempotency_key=randomUUID(); liteB.intake.signals.secret_request='yes';
+  const liteRace=await Promise.all([result('ana',litePath,liteA),result('ana',litePath,liteB)]);
+  pass('Lite concurrent writes yield one revision and one conflict',liteRace.map(r=>r.status).sort().join(',')==='200,409');
+  const liteRead=await result('ana',litePath);
+  pass('Lite resumes latest case-bound signals',liteRead.status===200 && liteRead.body.data.revision===2 && liteRead.body.data.intake.signals.guaranteed_return==='unknown');
+  pass('Lite hides raw signals from client and foreign staff', (await result('clientA',litePath)).status===404 && (await result('authorB',litePath)).status===404);
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
   pass('COFRE new case starts without an invented intake', blank.status === 200 && blank.body.data === null);
