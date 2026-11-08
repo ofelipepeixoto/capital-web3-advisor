@@ -2,12 +2,10 @@
  * Answers are declarations, not verified evidence or a safety guarantee.
  * Source models are deliberately separate and require explicit methodological approval.
  */
-export const SIGNAL_IDS = ["urgency", "guaranteed_return", "unsolicited_link", "different_domain",
-  "unverified_contract", "unlimited_approval", "secret_request", "missing_team_docs",
-  "unclear_tokenomics", "profit_screenshots"] as const;
+import { SIGNAL_IDS, assessSignals } from '../../../apps/staging/cofre-lite-signals.mjs';
+export { SIGNAL_IDS, assessSignals };
 export type SignalId = typeof SIGNAL_IDS[number];
 export type SignalAnswer = "yes" | "no" | "unknown" | "not_applicable";
-const CRITICAL_SIGNALS: readonly SignalId[] = ["guaranteed_return", "unsolicited_link", "different_domain", "secret_request"];
 const has = <T extends string>(values: readonly T[], value: unknown): value is T =>
   typeof value === "string" && values.includes(value as T);
 function fail(): never { throw new Error("invalid_lite_input"); }
@@ -19,23 +17,6 @@ function exactObject(input: unknown, keys: readonly string[]): Record<string, un
   if (all.length !== keys.length || all.some(key => typeof key !== "string" || !keys.includes(key))) return fail();
   for (const key of keys) { const d = Object.getOwnPropertyDescriptor(input, key); if (!d || !("value" in d) || !d.enumerable) return fail(); }
   return input as Record<string, unknown>;
-}
-
-/** Higher risk cannot be overridden by coverage or a score. No positive safety verdict. */
-export function assessSignals(input: unknown) {
-  const answers = exactObject(input, SIGNAL_IDS);
-  let critical = 0, flagged = 0, unknown = 0, notApplicable = 0;
-  for (const id of SIGNAL_IDS) {
-    const a = answers[id];
-    if (!has(["yes", "no", "unknown", "not_applicable"] as const, a)) return fail();
-    if (a === "yes") { flagged++; if (CRITICAL_SIGNALS.includes(id)) critical++; }
-    if (a === "unknown") unknown++;
-    if (a === "not_applicable") notApplicable++;
-  }
-  const applicable = SIGNAL_IDS.length - notApplicable;
-  const status = critical ? "blocked" : flagged >= 3 ? "pause_and_investigate" : flagged ? "review_signals" : unknown || !applicable ? "incomplete" : "no_signal_reported";
-  return { status, critical_signals: critical, flagged_signals: flagged, unknown, not_applicable: notApplicable,
-    applicable, assessed: applicable - unknown, scope: "declared_only", safety_guarantee: false } as const;
 }
 
 export const ROUTINE_TASK_IDS = ["wallet_roles", "vault_dapp", "approvals", "unusual_movements", "inventory", "protocols", "backup", "recovery_drill", "incident_response"] as const;
