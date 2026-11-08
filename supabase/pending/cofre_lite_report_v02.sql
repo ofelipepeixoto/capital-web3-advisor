@@ -115,6 +115,18 @@ end $$;
 revoke all on function capital_web3_private.protect_lite_report_version() from public,anon,authenticated,service_role;
 create trigger lite_version_immutable before update or delete on capital_web3.advisory_report_versions for each row execute function capital_web3_private.protect_lite_report_version();
 
+-- Only the canonical Lite workflow can create Lite-typed versions. The
+-- registry is inserted first and bound to the same case in the transaction.
+create function capital_web3_private.guard_lite_report_type() returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if new.content->>'report_kind'='cofre_lite' and not exists(
+   select 1 from capital_web3_private.cofre_lite_report_registry r where r.case_id=new.case_id and r.report_id=new.report_id
+ ) then raise exception 'Lite report type requires canonical workflow' using errcode='23514'; end if;
+ return new;
+end $$;
+revoke all on function capital_web3_private.guard_lite_report_type() from public,anon,authenticated,service_role;
+create trigger lite_report_type_gate before insert or update on capital_web3.advisory_report_versions for each row execute function capital_web3_private.guard_lite_report_type();
+
 -- Lite review and publication require the latest complete synthetic snapshot.
 -- The case row serializes this gate against intake saves and prevents a stale
 -- snapshot becoming approved while a newer answer is committed.
@@ -147,7 +159,12 @@ begin
  -- A missing or foreign version is still handled by original authorization below.
  -- Lite's report row and snapshot become visible atomically at commit.
  select s.case_id into cid from capital_web3_private.cofre_lite_report_snapshots s where s.report_version_id=p_version;
- if cid is null then return; end if;
+ if cid is null then
+  if exists(select 1 from capital_web3.advisory_report_versions v where v.id=p_version and v.content->>'report_kind'='cofre_lite') then
+   raise exception 'Lite report lacks a canonical snapshot' using errcode='23514';
+  end if;
+  return;
+ end if;
  v_actor:=capital_web3_private.require_human_identity();
  -- First take the common case lock. 0.2 saves and draft creation use it too.
  perform 1 from capital_web3.advisory_cases where id=cid for update;
@@ -201,6 +218,12 @@ returns boolean language sql stable security definer set search_path = '' as $$
       where p.id = p_publication and p.published_at <= now()
         and (not capital_web3_private.is_cofre_case(p.case_id) or capital_web3_private.cofre_case_access(p.case_id))
         and (p.expires_at is null or p.expires_at > now())
+        and not exists (
+          select 1 from capital_web3.advisory_report_versions v where v.id=p.report_version_id
+           and v.content->>'report_kind'='cofre_lite' and not exists (
+            select 1 from capital_web3_private.cofre_lite_report_snapshots s where s.report_version_id=v.id and s.case_id=p.case_id
+           )
+        )
         and not exists (
           select 1 from capital_web3_private.cofre_lite_report_snapshots s
           left join capital_web3_private.cofre_lite_intakes_v02 i on i.case_id=s.case_id
