@@ -58,6 +58,18 @@ begin
 end $$;
 revoke all on function capital_web3_private.cofre_lite_canonical_report(jsonb) from public,anon,authenticated,service_role;
 
+-- Changing the switch invalidates all prior release epochs, including after
+-- re-enabling the feature. UUIDs prevent a recreated row reusing an old epoch.
+alter table capital_web3_private.cofre_lite_features add column release_epoch uuid not null default pg_catalog.gen_random_uuid();
+create function capital_web3_private.rotate_lite_release_epoch() returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if new.enabled is distinct from old.enabled then new.release_epoch:=pg_catalog.gen_random_uuid();
+ elsif new.release_epoch is distinct from old.release_epoch then raise exception 'release epoch is server managed' using errcode='23514'; end if;
+ return new;
+end $$;
+revoke all on function capital_web3_private.rotate_lite_release_epoch() from public,anon,authenticated,service_role;
+create trigger lite_release_epoch before update on capital_web3_private.cofre_lite_features for each row execute function capital_web3_private.rotate_lite_release_epoch();
+
 -- Dedicated report identity avoids sharing the Individual report's version counter.
 create table capital_web3_private.cofre_lite_report_registry (
  case_id uuid primary key references capital_web3.advisory_cases(id),
@@ -66,6 +78,7 @@ create table capital_web3_private.cofre_lite_report_registry (
 create table capital_web3_private.cofre_lite_report_snapshots (
  case_id uuid not null references capital_web3.advisory_cases(id),
  intake_revision integer not null check(intake_revision>0),
+ release_epoch uuid not null,
  intake jsonb not null check(jsonb_typeof(intake)='object' and octet_length(intake::text)<=6000),
  report_version_id uuid not null unique references capital_web3.advisory_report_versions(id),
  created_by uuid not null references auth.users(id),
@@ -129,7 +142,7 @@ create trigger lite_publication_gate before insert on capital_web3.advisory_publ
 
 create function capital_web3_private.lock_lite_release(p_version uuid,p_roles text[],p_recipients uuid[])
 returns void language plpgsql security definer set search_path='' as $$
-declare v_actor uuid; cid uuid; wid uuid; snapshot_rev integer; current_rev integer; state text; author uuid;
+declare v_actor uuid; cid uuid; wid uuid; snapshot_rev integer; current_rev integer; snapshot_epoch uuid; current_epoch uuid; state text; author uuid;
 begin
  -- A missing or foreign version is still handled by original authorization below.
  -- Lite's report row and snapshot become visible atomically at commit.
@@ -163,15 +176,46 @@ begin
  select v.content->>'status',v.created_by into state,author from capital_web3.advisory_report_versions v
   where v.id=p_version and v.case_id=cid for update;
  if not found or author=v_actor then raise exception 'report unavailable' using errcode='42501'; end if;
- select s.intake_revision into snapshot_rev from capital_web3_private.cofre_lite_report_snapshots s
+ select s.intake_revision,s.release_epoch into snapshot_rev,snapshot_epoch from capital_web3_private.cofre_lite_report_snapshots s
   where s.report_version_id=p_version and s.case_id=cid;
  select i.revision into current_rev from capital_web3_private.cofre_lite_intakes_v02 i where i.case_id=cid;
- if snapshot_rev is null or current_rev is distinct from snapshot_rev or state is distinct from 'requires_review' then
+ select f.release_epoch into current_epoch from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled;
+ if snapshot_rev is null or current_rev is distinct from snapshot_rev or snapshot_epoch is distinct from current_epoch or state is distinct from 'requires_review' then
    raise exception 'Lite report outdated or not ready' using errcode='23514';
  end if;
 end $$;
 revoke all on function capital_web3_private.lock_lite_release(uuid,text[],uuid[]) from public,anon,authenticated,service_role;
 
+
+-- Central recipient predicate also covers direct API, receipts and Storage.
+create or replace function capital_web3_private.can_receive_publication(p_publication uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select auth.uid() is not null
+    and coalesce((auth.jwt()->>'is_anonymous')::boolean, false) = false
+    and exists (
+      select 1 from capital_web3.advisory_publications p
+      join capital_web3.advisory_publication_recipients r
+        on r.publication_id = p.id and r.case_id = p.case_id and r.user_id = auth.uid()
+      join capital_web3.advisory_case_clients c
+        on c.case_id = p.case_id and c.user_id = r.user_id and c.active
+      where p.id = p_publication and p.published_at <= now()
+        and (not capital_web3_private.is_cofre_case(p.case_id) or capital_web3_private.cofre_case_access(p.case_id))
+        and (p.expires_at is null or p.expires_at > now())
+        and not exists (
+          select 1 from capital_web3_private.cofre_lite_report_snapshots s
+          left join capital_web3_private.cofre_lite_intakes_v02 i on i.case_id=s.case_id
+          left join capital_web3_private.cofre_case_workspaces cw on cw.case_id=s.case_id
+          left join capital_web3_private.cofre_lite_features f on f.workspace_id=cw.workspace_id
+          where s.report_version_id=p.report_version_id and
+           (i.revision is distinct from s.intake_revision or f.enabled is distinct from true or f.release_epoch is distinct from s.release_epoch)
+        )
+        and not exists (
+          select 1 from capital_web3.advisory_publication_revocations x
+          where x.publication_id = p.id
+            and (x.recipient_user_id is null or x.recipient_user_id = auth.uid())
+        )
+    );
+$$;
 
 -- Wrappers lock the Lite authorization chain before the existing report lock.
 -- Other report types retain the existing behavior. The renamed functions are
@@ -227,12 +271,21 @@ begin
   or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  request_hash:=pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('case',p_case_id,'revision',p_expected_revision)::text,'UTF8')),'hex');
  select * into old from capital_web3_private.cofre_lite_report_receipts x where x.actor=v_actor and x.key=p_idempotency_key;
- if found then if old.request_hash<>request_hash then raise exception 'key conflict' using errcode='23505'; end if; return old.result; end if;
+ if found then
+  if old.request_hash<>request_hash then raise exception 'key conflict' using errcode='23505'; end if;
+  if not exists(select 1 from capital_web3_private.cofre_lite_report_snapshots s join capital_web3_private.cofre_lite_features f on f.workspace_id=wid and f.enabled and f.release_epoch=s.release_epoch where s.report_version_id=(old.result->>'report_version_id')::uuid) then
+   raise exception 'Lite release epoch changed; save a new intake revision' using errcode='23514';
+  end if;
+  return old.result;
+ end if;
  select max_receipts_per_actor,minimum_retention_days into strict quota,retention from capital_web3_private.cofre_lite_intake_policy_v02 where singleton for share;
  if (select count(*) from capital_web3_private.cofre_lite_report_receipts x where x.actor=v_actor)>=quota then raise exception 'receipt limit reached' using errcode='54000'; end if;
  select revision,intake into r,data from capital_web3_private.cofre_lite_intakes_v02 where case_id=p_case_id;
  if r is distinct from p_expected_revision then raise exception 'lite changed' using errcode='23514'; end if;
  select report_version_id into vid from capital_web3_private.cofre_lite_report_snapshots where case_id=p_case_id and intake_revision=r;
+ if vid is not null and not exists(select 1 from capital_web3_private.cofre_lite_report_snapshots s join capital_web3_private.cofre_lite_features f on f.workspace_id=wid and f.enabled and f.release_epoch=s.release_epoch where s.report_version_id=vid) then
+  raise exception 'Lite release epoch changed; save a new intake revision' using errcode='23514';
+ end if;
  if vid is null then
   select report_id into rid from capital_web3_private.cofre_lite_report_registry where case_id=p_case_id;
   if rid is null then
@@ -242,7 +295,7 @@ begin
   select coalesce(max(version_number),0)+1 into next_version from capital_web3.advisory_report_versions where report_id=rid;
   insert into capital_web3.advisory_report_versions(report_id,case_id,version_number,content,created_by)
    values(rid,p_case_id,next_version,capital_web3_private.cofre_lite_canonical_report(data),v_actor) returning id into vid;
-  insert into capital_web3_private.cofre_lite_report_snapshots(case_id,intake_revision,intake,report_version_id,created_by) values(p_case_id,r,data,vid,v_actor);
+  insert into capital_web3_private.cofre_lite_report_snapshots(case_id,intake_revision,release_epoch,intake,report_version_id,created_by) select p_case_id,r,f.release_epoch,data,vid,v_actor from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled;
   insert into capital_web3.advisory_audit_events(case_id,actor_user_id,action,entity_id) values(p_case_id,v_actor,'cofre_lite_draft_created',vid);
  end if;
  result:=jsonb_build_object('case_id',p_case_id,'intake_revision',r,'report_version_id',vid);
