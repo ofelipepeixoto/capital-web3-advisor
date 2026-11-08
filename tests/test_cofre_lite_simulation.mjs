@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { LiteSimulation, liteSummary } from '../apps/staging/cofre-lite-simulation.mjs';
+import { LiteSimulation, liteSummary, monthlySummary, MONTHLY_TASKS } from '../apps/staging/cofre-lite-simulation.mjs';
 class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.handlers = {}; this.attributes = {}; this._text = ''; this.checked = false; }
   set textContent(value) { this._text = String(value); this.children = []; }
@@ -41,6 +41,21 @@ test('panorama incompleto se atualiza após responder na última etapa', () => {
   const before = liteSummary(ui.answers).missing; select(root, 'lite-routine', 'yes');
   assert.equal(liteSummary(ui.answers).missing, before - 1);
   assert.ok(root.textContent.includes(`Exercício incompleto: ${before - 1} respostas`));
+});
+
+test('rotina mensal mantém não avaliadas visíveis e é somente da sessão', () => {
+  const root = new Element('section'), ui = new LiteSimulation(root); ui.render();
+  for (let i = 0; i < 5; i++) find(root, 'button', 'Continuar').click();
+  assert.deepEqual(monthlySummary({}), { done: 0, pending: 0, unassessed: 7 });
+  select(root, 'monthly-wallet_roles', 'done');
+  assert.deepEqual(monthlySummary(ui.routineAnswers), { done: 1, pending: 0, unassessed: 6 });
+  assert.match(root.textContent, /1 concluídas.*6 não avaliadas/);
+  assert.ok(root.textContent.includes('não é salvo no atendimento'));
+  assert.equal(ui.routineDirty, true);
+  assert.equal('routineAnswers' in ui.intake(), false);
+  for (const [id] of MONTHLY_TASKS) ui.routineAnswers[id] = 'pending';
+  assert.deepEqual(monthlySummary(ui.routineAnswers), { done: 0, pending: 7, unassessed: 0 });
+  ui.clear(); assert.equal(ui.routineDirty, false); assert.deepEqual(ui.routineAnswers, {});
 });
 
 test('os dez sinais da prevenção usam a mesma regra do serviço sem pontuação', async () => {
