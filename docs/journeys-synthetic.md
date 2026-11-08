@@ -37,3 +37,13 @@ a fonte de identidade, evidências, revisão e autorização numa futura integra
 Para verificar: `node --test tests/test_journeys.mjs` e `make check`. Os testes
 cobrem estados, lacunas, duplicação, isolamento de objetos e rejeição de campos
 extras; não comprovam comportamento hospedado, UX, políticas ou banco.
+
+## Exercícios no portal de homologação
+
+As quatro estruturas podem ser exploradas como exercícios de equipe por meio da
+API autenticada. Investidor avançado e empresa/DAO exibem orientações por etapa,
+sem solicitar valores, endereços ou detalhes de clientes. A lista separa lacunas
+de etapas desconhecidas ou não avaliadas. A API rejeita afirmações de revisão
+humana enviadas pelo cliente. Nada é gravado; não há diagnóstico ou entrega por
+caso nestes exercícios. As jornadas de cliente exigem contratos, persistência e
+revisão próprios antes de serem disponibilizadas.
