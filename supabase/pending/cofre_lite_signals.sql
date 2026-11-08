@@ -59,6 +59,12 @@ begin
  v_actor:=capital_web3_private.require_human_identity();
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
  if wid is null or not exists(select 1 from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled) or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
+ -- A committed disable must precede any newly authorized read.
+ perform 1 from capital_web3_private.cofre_lite_features where workspace_id=wid and enabled for share;
+ if not found or capital_web3_private.require_human_identity() is distinct from v_actor
+  or not capital_web3_private.cofre_is_staff(wid,array['analyst'])
+  or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin'])
+ then raise exception 'case unavailable' using errcode='42501'; end if;
  select jsonb_build_object('intake',intake,'revision',revision,'updated_at',updated_at) into result from capital_web3_private.cofre_lite_signals where case_id=p_case_id;
  return result;
 end $$;
@@ -74,9 +80,9 @@ begin
  -- Serialize both the case's revision and the actor's global idempotency quota.
  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text||':lite-actor',0));
  perform 1 from capital_web3.advisory_cases where id=p_case_id for update;
- -- A session, assignment or switch may be revoked while waiting for either lock.
- if capital_web3_private.require_human_identity() is distinct from v_actor
-  or not exists(select 1 from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled)
+ -- The shared lock serializes a disable with this write until transaction commit.
+ perform 1 from capital_web3_private.cofre_lite_features where workspace_id=wid and enabled for share;
+ if not found or capital_web3_private.require_human_identity() is distinct from v_actor
   or not capital_web3_private.cofre_is_staff(wid,array['analyst'])
   or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin'])
  then raise exception 'case unavailable' using errcode='42501'; end if;

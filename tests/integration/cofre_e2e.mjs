@@ -2,6 +2,7 @@
  * Credentials remain in memory; only fixed assertion labels enter CI output.
  */
 import { randomUUID } from 'node:crypto';
+import { spawn, spawnSync } from 'node:child_process';
 import { COFRE_CONTROL_IDS } from '../../supabase/functions/advisory-api/cofre.ts';
 import { SIGNAL_IDS } from '../../supabase/functions/advisory-api/cofre-lite-rules.ts';
 
@@ -111,6 +112,39 @@ commit;`);
   const liteRead=await result('ana',litePath);
   pass('Lite resumes latest case-bound signals',liteRead.status===200 && liteRead.body.data.revision===2 && liteRead.body.data.intake.signals.guaranteed_return==='unknown');
   pass('Lite hides raw signals from client and foreign staff', (await result('clientA',litePath)).status===404 && (await result('authorB',litePath)).status===404);
+  // A write holding the feature's shared row lock must finish before an operator
+  // can commit disabling it. Actual local psql sessions; no credentials logged.
+  const claims = JSON.parse(Buffer.from(users.ana.token.split('.')[1], 'base64url').toString('utf8'));
+  requireCondition(UUID.test(claims.session_id), 'Lite lock test session UUID is valid');
+  const db = new URL(status.DB_URL);
+  requireCondition(db.hostname === '127.0.0.1' && db.port === '54322', 'Lite lock test only uses disposable database');
+  const pgEnv = { ...process.env, PGHOST:'127.0.0.1', PGPORT:'54322', PGDATABASE:'postgres', PGUSER:'postgres',
+    PGPASSWORD:decodeURIComponent(db.password), PGCONNECT_TIMEOUT:'10' };
+  const holder = spawn('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,stdio:['pipe','pipe','pipe']});
+  const finished = new Promise((resolve,reject) => { holder.on('error',reject); holder.on('close',code=>resolve(code)); });
+  const ready = new Promise((resolve,reject) => {
+    let output=''; const timeout=setTimeout(()=>reject(Error('Lite lock holder did not start')),10000);
+    holder.stdout.on('data',chunk=>{ output+=chunk.toString(); if(output.includes('LITE_LOCK_READY')) {clearTimeout(timeout);resolve();} });
+    holder.on('error',error=>{clearTimeout(timeout);reject(error);});
+    holder.on('close',()=>{clearTimeout(timeout);if(!output.includes('LITE_LOCK_READY'))reject(Error('Lite lock holder stopped'));});
+  });
+  holder.stdin.end(`begin; set local role authenticated;
+select set_config('request.jwt.claims','${JSON.stringify({sub:users.ana.id,role:'authenticated',session_id:claims.session_id,aal:'aal1',is_anonymous:false})}',true);
+select capital_web3.advisory_lite_signals_save('${caseId}','${JSON.stringify(liteDraft)}'::jsonb,2,'${randomUUID()}');
+reset role;
+\\echo LITE_LOCK_READY
+select pg_sleep(4); commit;`);
+  try {
+    await ready;
+    const toggle = spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,
+      input:`begin; set local lock_timeout='500ms'; update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'; commit;`});
+    pass('Lite disable cannot commit before an in-flight write completes',toggle.status!==0 && /lock timeout/i.test(toggle.stderr));
+    requireCondition(await finished === 0, 'Lite lock holder commits');
+  } finally { if (holder.exitCode === null) holder.kill(); }
+  await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
+  pass('Lite confirmed disable denies new direct reads', (await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId})).status===403);
+  await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
+
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
   pass('COFRE new case starts without an invented intake', blank.status === 200 && blank.body.data === null);
