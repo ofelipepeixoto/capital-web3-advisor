@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { LiteSimulation, liteSummary } from '../apps/staging/cofre-lite-simulation.mjs';
 class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.handlers = {}; this.attributes = {}; this._text = ''; this.checked = false; }
@@ -20,7 +21,7 @@ const select = (root, name, value) => { const input = root.all().find(n => n.nam
 test('vazio é incompleto e sinal crítico prevalece sobre lacunas', () => {
   assert.equal(liteSummary({}).state, 'incomplete');
   assert.equal(liteSummary({ secret_exposure: 'yes' }).state, 'blocked');
-  assert.equal(liteSummary({ request_secret: 'yes', secret_exposure: 'unknown' }).state, 'blocked');
+  assert.equal(liteSummary({ secret_request: 'yes', secret_exposure: 'unknown' }).state, 'blocked');
 });
 test('jornada preserva respostas ao navegar, sinaliza risco e nunca pede segredos', () => {
   const root = new Element('section'), ui = new LiteSimulation(root); ui.render();
@@ -40,4 +41,25 @@ test('panorama incompleto se atualiza após responder na última etapa', () => {
   const before = liteSummary(ui.answers).missing; select(root, 'lite-routine', 'yes');
   assert.equal(liteSummary(ui.answers).missing, before - 1);
   assert.ok(root.textContent.includes(`Exercício incompleto: ${before - 1} respostas`));
+});
+
+test('os dez sinais da prevenção usam a mesma regra do serviço sem pontuação', async () => {
+  const { SIGNAL_IDS, assessSignals } = await import('../apps/staging/cofre-lite-signals.mjs');
+  const root = new Element('section'), ui = new LiteSimulation(root); ui.render();
+  for (let i = 0; i < 3; i++) find(root, 'button', 'Continuar').click();
+  const ids = new Set(root.all().filter(item => item.tagName === 'input').map(input => input.name.replace('lite-', '')));
+  for (const id of SIGNAL_IDS) assert.ok(ids.has(id), id);
+  select(root, 'lite-guaranteed_return', 'yes');
+  const values = Object.fromEntries(SIGNAL_IDS.map(id => [id, ui.answers[id] || 'unknown']));
+  assert.equal(assessSignals(values).status, 'blocked');
+  assert.equal(liteSummary(ui.answers).state, 'blocked');
+  assert.match(root.textContent, /Alerta crítico/);
+});
+
+// Development browser files are duplicated so the test server can serve them.
+// A divergent copy would show clients a different signal policy.
+test('browser signal module matches the Edge-local source', async () => {
+  const browser = await readFile(new URL('../apps/staging/cofre-lite-signals.mjs', import.meta.url), 'utf8');
+  const edge = await readFile(new URL('../supabase/functions/advisory-api/cofre-lite-signals.mjs', import.meta.url), 'utf8');
+  assert.equal(browser, edge);
 });

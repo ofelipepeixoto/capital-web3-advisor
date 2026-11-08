@@ -1,3 +1,4 @@
+import { SIGNAL_IDS, assessSignals } from './cofre-lite-signals.mjs';
 // Local synthetic learning exercise. Not an assessment, report or persistence API.
 const SECTIONS = [
   { title: 'Diagnóstico', questions: [
@@ -17,8 +18,16 @@ const SECTIONS = [
   ] },
   { title: 'Prevenção', questions: [
     ['source', 'A origem e o domínio foram conferidos?', [['', 'Não informado'], ['yes', 'Sim, declarado'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['na', 'Não se aplica']]],
-    ['request_secret', 'Há pedido de frase de recuperação, senha ou chave privada?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['na', 'Não se aplica']]],
-    ['urgency', 'Há pressão para agir com urgência?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['na', 'Não se aplica']]],
+    ['urgency', 'A oferta pressiona você a entrar agora?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['guaranteed_return', 'Existe promessa de lucro ou renda garantida?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['unsolicited_link', 'O link veio por mensagem inesperada ou perfil parecido?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['different_domain', 'O domínio difere do oficial ou parece alterado?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['unverified_contract', 'Não foi possível conferir o contrato ou token?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['unlimited_approval', 'Foi solicitada permissão ilimitada sem necessidade clara?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['secret_request', 'Foi solicitado segredo, chave privada ou código de autenticação?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['missing_team_docs', 'Faltam informações verificáveis sobre equipe ou documentação?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['unclear_tokenomics', 'Distribuição, prazos ou desbloqueios estão pouco claros?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
+    ['profit_screenshots', 'A oferta depende de prints ou depoimentos de lucro?', [['', 'Não informado'], ['yes', 'Sim'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['not_applicable', 'Não se aplica']]],
   ] },
   { title: 'Permissões', questions: [
     ['permissions', 'Há uma rotina para revisar permissões?', [['', 'Não informado'], ['yes', 'Sim, declarado'], ['no', 'Não'], ['unknown', 'Não sabe informar'], ['na', 'Não se aplica']]],
@@ -29,12 +38,14 @@ const SECTIONS = [
   ] },
 ];
 const QUESTIONS = SECTIONS.flatMap(section => section.questions);
-const CRITICAL = ['secret_exposure', 'request_secret'];
+
 const node = (tag, text = '') => { const n = document.createElement(tag); n.textContent = text; return n; };
 export function liteSummary(answers) {
   const missing = QUESTIONS.filter(([id]) => !answers[id] || answers[id] === 'unknown').length;
-  const critical = CRITICAL.some(id => answers[id] === 'yes');
-  return { critical, missing, state: critical ? 'blocked' : missing ? 'incomplete' : 'review' };
+  const input = Object.fromEntries(SIGNAL_IDS.map(id => [id, answers[id] || 'unknown']));
+  const signals = assessSignals(input);
+  const critical = answers.secret_exposure === 'yes' || signals.status === 'blocked';
+  return { critical, missing, signals, state: critical ? 'blocked' : missing ? 'incomplete' : 'review' };
 }
 export class LiteSimulation {
   constructor(root) { this.root = root; this.clear(); }
@@ -47,7 +58,7 @@ export class LiteSimulation {
     const progress = node('progress'); progress.max = SECTIONS.length; progress.value = this.step + 1; progress.setAttribute('aria-label', 'Etapa do exercício'); this.root.append(progress);
     const result = node('p'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite'); let summaryStatus;
     const updateAlert = () => { const value = liteSummary(this.answers);
-      result.textContent = value.critical ? 'Alerta crítico: interrompa a interação e procure atendimento humano adequado. Não informe segredos.' : '';
+      result.textContent = value.critical ? 'Alerta crítico: interrompa a interação e procure atendimento humano adequado. Não informe segredos.' : value.signals.flagged_signals ? 'Há sinais relatados. Pause e peça revisão humana antes de agir.' : '';
       if (summaryStatus) summaryStatus.textContent = value.critical ? 'Alerta crítico. Interrompa a interação e peça orientação humana adequada.' : value.missing ? `Exercício incompleto: ${value.missing} respostas não informadas ou desconhecidas.` : 'Respostas preenchidas. A equipe deve revisar o contexto e as evidências antes de qualquer conclusão.';
     };
     updateAlert(); this.root.append(result);

@@ -16,6 +16,8 @@ try {
   await rm(output + '/public', { recursive: true, force: true });
   await mkdir(output + '/public', { recursive: true });
   for (const name of ['index.html', 'styles.css', 'app.mjs', 'client.mjs', 'cofre-ui.mjs', 'cofre-lite-simulation.mjs', 'auth-controls.mjs', 'auth-controls-ui.mjs']) await copyFile(root + '/apps/staging/' + name, output + '/public/' + name);
+  // Ship the exact module used by the Edge function.
+  await copyFile(root + '/supabase/functions/advisory-api/cofre-lite-signals.mjs', output + '/public/cofre-lite-signals.mjs');
   // Static Sites cannot apply the optional Caddyfile. Enforce a precise policy in
   // the generated page as well; frame-ancestors still requires a host header.
   const html = await readFile(output + '/public/index.html', 'utf8');
