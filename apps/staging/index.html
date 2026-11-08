@@ -29,8 +29,9 @@
     <section id="auth-controls" class="card compact" hidden aria-label="Segurança da conta"></section>
     <section id="workspace" hidden>
       <div class="toolbar"><div><h1>Seu espaço Capital Web3</h1><p id="identity" class="muted"></p></div><button id="refresh">Atualizar acesso</button></div>
-      <nav id="workspace-nav" class="actions" aria-label="Área de trabalho" hidden><button id="cases-tab" aria-controls="cases-panel">Atendimentos</button><button id="reports-tab" aria-controls="diagnostics-panel">Diagnósticos</button></nav>
+      <nav id="workspace-nav" class="actions" aria-label="Área de trabalho" hidden><button id="cases-tab" aria-controls="cases-panel">Atendimentos</button><button id="lite-tab" aria-controls="lite-panel">Exercício COFRE Lite</button><button id="reports-tab" aria-controls="diagnostics-panel">Diagnósticos</button></nav>
       <section id="cases-panel" hidden aria-labelledby="cases-heading"><h2 id="cases-heading" tabindex="-1">Atendimentos COFRE Individual</h2><div id="cofre-workspace"></div></section>
+      <section id="lite-panel" class="card" hidden aria-labelledby="lite-heading"><h2 id="lite-heading" tabindex="-1">Exercício COFRE Lite</h2><div id="lite-workspace"></div></section>
       <section id="diagnostics-panel" aria-label="Diagnósticos"><div class="layout"><aside class="card"><h2 id="reports-heading" tabindex="-1">Versões disponíveis</h2><div id="reports"></div><p class="muted">Até 100 versões por consulta.</p></aside><article id="detail" class="card" aria-live="polite"><h2>Selecione um diagnóstico</h2></article></div></section>
     </section>
   </main>
