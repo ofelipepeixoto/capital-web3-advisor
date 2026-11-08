@@ -43,3 +43,15 @@ test('editing during an in-flight check suppresses the stale result and permits 
   const retry=form.handlers.submit({preventDefault(){}});assert.equal(calls,2);resolve({data:{status:'needs_input',counts:{}}});await retry;
   assert.ok(root.textContent.includes('Exercício incompleto'));
 });
+
+test('advanced investor and organization use authorized stateless preview without claiming a report',async()=>{
+  for (const [title, expected, field] of [['Investidor avançado','advanced_investor','Ativos e passivos'],['Empresa ou DAO','organization_dao','Multisig e módulos']]) {
+    const root=new Element('section'),calls=[];
+    const ui=new JourneyExercise({root,api:async(path,body)=>{calls.push({path,body});return {data:body?summarizeJourney(body):listSyntheticJourneys()};}});
+    await ui.load();byText(root,title).click();assert.ok(root.textContent.includes(field));
+    const selects=root.all().filter(x=>x.tagName==='select');selects[0].value='gap';selects[0].handlers.change();
+    await root.all().find(x=>x.tagName==='form').handlers.submit({preventDefault(){}});
+    assert.equal(calls[1].body.journey,expected);assert.equal(calls[1].body.synthetic,true);
+    assert.match(root.textContent,/Exercício incompleto/);assert.match(root.textContent,/Lacuna declarada/);assert.match(root.textContent,/Nada foi salvo/);
+  }
+});

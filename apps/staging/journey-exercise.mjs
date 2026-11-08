@@ -1,7 +1,23 @@
 const LABELS = Object.freeze({
-  cofre6_individual: 'COFRE-6 Individual', rastro: 'RASTRO',
+  cofre6_individual: 'COFRE-6 Individual', rastro: 'RASTRO', advanced_investor: 'Investidor avançado', organization_dao: 'Empresa ou DAO',
   threat_model: 'Modelo de ameaça', wallet_roles: 'Funções das carteiras', keys_and_recovery: 'Chaves e recuperação', hygiene: 'Higiene e uso', evidence: 'Evidências', continuity: 'Continuidade',
+  objectives_and_liquidity: 'Objetivos e liquidez', assets_and_liabilities: 'Ativos e passivos', sources_and_evidence: 'Fontes e evidências', permissions_and_exposure: 'Permissões e exposição', risk_and_action_plan: 'Riscos e plano de ação',
+  mandate_and_structure: 'Mandato e estrutura', roles_and_delegation: 'Papéis e delegação', treasury_policy: 'Política de tesouraria', multisig_and_modules: 'Multisig e módulos', review_and_decision: 'Revisão e decisão', reconciliation_and_continuity: 'Conciliação e continuidade',
   mandate: 'Mandato', universe: 'Universo', maturity: 'Maturidade', minimal_stack: 'Ferramentas mínimas', taxonomy_and_owners: 'Taxonomia e responsáveis', rituals_and_alerts: 'Rituais e alertas', plan_90_days: 'Plano de 90 dias',
+});
+const HELP = Object.freeze({
+  objectives_and_liquidity: 'Considere finalidade, horizonte e necessidade de liquidez antes da análise.',
+  wallet_roles: 'Organize as funções de guarda, aplicativos, gastos e observação.',
+  assets_and_liabilities: 'Identifique categorias e dívidas no exemplo, sem incluir saldos ou endereços.',
+  sources_and_evidence: 'Indique se as fontes e a data das informações foram definidas.',
+  permissions_and_exposure: 'Considere permissões e riscos de exposição, sem conectar carteiras.',
+  risk_and_action_plan: 'Organize lacunas e ações para avaliação humana posterior.',
+  mandate_and_structure: 'Considere a finalidade da organização e o escopo da tesouraria.',
+  roles_and_delegation: 'Considere separação de responsabilidades e substitutos.',
+  treasury_policy: 'Confira se existem regras sobre reserva, uso e limites.',
+  multisig_and_modules: 'Considere signatários, limite de assinaturas e módulos; não presuma segurança pelo limite sozinho.',
+  review_and_decision: 'Considere como uma pessoa revisa e como a decisão é documentada.',
+  reconciliation_and_continuity: 'Considere conciliação, continuidade e recuperação.',
 });
 const OPTIONS = [['not_assessed','Não avaliado'],['unknown','Não sei'],['declared','Declarado'],['gap','Lacuna declarada'],['not_applicable','Não aplicável no exemplo']];
 const el = (tag,text='') => {const n=document.createElement(tag);n.textContent=text;return n;};
@@ -13,8 +29,8 @@ export class JourneyExercise {
     try {
       const result=await this.api('/cofre/journeys');if(epoch!==this.epoch)return;
       if(!Array.isArray(result.data))throw Error('Não foi possível carregar as estruturas.');
-      this.catalog=result.data.filter(x=>['cofre6_individual','rastro'].includes(x.id) && Array.isArray(x.stages) && x.stages.every(id=>typeof LABELS[id]==='string'));
-      if(this.catalog.length!==2)throw Error('Estruturas indisponíveis.');
+      this.catalog=result.data.filter(x=>['cofre6_individual','rastro','advanced_investor','organization_dao'].includes(x.id) && Array.isArray(x.stages) && x.stages.length>0 && x.stages.every(id=>typeof LABELS[id]==='string'));
+      if(this.catalog.length!==4 || new Set(this.catalog.map(x=>x.id)).size!==4)throw Error('Estruturas indisponíveis.');
       this.showPicker();
     } catch {if(epoch!==this.epoch)return;this.root.replaceChildren(el('p','Não foi possível carregar o exercício. Atualize o acesso e tente novamente.'));}
   }
@@ -34,7 +50,8 @@ export class JourneyExercise {
       for(const [value,title] of OPTIONS){const opt=el('option',title);opt.value=value;select.append(opt);}
       select.value='not_assessed';
       select.addEventListener('change',()=>{this.dirty=true;this.epoch++;run.disabled=false;this.output.replaceChildren();});
-      form.append(label,select);this.inputs.push({id,select});
+      form.append(label); if (HELP[id]) { const help=el('p',HELP[id]); help.className='muted'; help.id='exercise-help-'+id; select.setAttribute('aria-describedby',help.id); form.append(help); }
+      form.append(select);this.inputs.push({id,select});
     }
     const run=el('button','Conferir situação do exemplo');run.className='primary';run.type='submit';form.append(run);
     form.addEventListener('submit',async event=>{
@@ -45,7 +62,13 @@ export class JourneyExercise {
         if(epoch!==this.epoch)return;const data=result.data;
         if(!data || !data.counts || !['needs_input','has_gaps','awaits_human_review'].includes(data.status))throw Error();
         const message=data.status==='needs_input'?'Exercício incompleto: há etapas não avaliadas ou desconhecidas.':data.status==='has_gaps'?'Há lacunas declaradas neste exemplo.':'Etapas preenchidas no exemplo. Revisão humana ainda necessária.';
-        this.output.replaceChildren(el('p',message),el('p','Exercício sem pontuação, verificação independente ou publicação. Nada foi salvo.'));
+        const detail=el('ul');
+        for (const stage of Array.isArray(data.stages)?data.stages:[]) {
+          if (!['not_assessed','unknown','gap'].includes(stage.state) || !LABELS[stage.id]) continue;
+          const state=stage.state==='gap'?'Lacuna declarada':stage.state==='unknown'?'Não sabe':'Não avaliado';
+          detail.append(el('li',`${LABELS[stage.id]}: ${state}`));
+        }
+        this.output.replaceChildren(el('p',message), detail, el('p','Exercício sem pontuação, verificação independente ou publicação. Nada foi salvo.'));
       } catch {if(epoch===this.epoch)this.output.replaceChildren(el('p','Não foi possível conferir. Tente novamente após verificar o acesso.'));}
       finally {if(epoch===this.epoch)run.disabled=false;}
     });
