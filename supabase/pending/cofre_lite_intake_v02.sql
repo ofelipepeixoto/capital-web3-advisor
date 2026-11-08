@@ -1,4 +1,4 @@
--- Candidate only: synthetic full Lite intake. Apply after cofre_lite_intakes_v02.sql.
+-- Candidate only: synthetic full Lite intake. Apply after cofre_lite_signals.sql.
 begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
@@ -32,6 +32,19 @@ alter table capital_web3_private.cofre_lite_intakes_v02 force row level security
 alter table capital_web3_private.cofre_lite_intake_receipts enable row level security;
 alter table capital_web3_private.cofre_lite_intake_receipts force row level security;
 revoke all on capital_web3_private.cofre_lite_intakes_v02,capital_web3_private.cofre_lite_intake_receipts from public,anon,authenticated,service_role;
+
+-- Once v0.2 exists, a stale v0.1 tab must not create an invisible divergent state.
+-- Both save paths serialize on advisory_cases row; existing 0.1 receipts still replay.
+create function capital_web3_private.reject_lite_legacy_after_v02()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if exists(select 1 from capital_web3_private.cofre_lite_intakes_v02 where case_id=new.case_id) then
+  raise exception 'legacy version is read-only after upgrade' using errcode='23514'; end if;
+ return new;
+end $$;
+revoke all on function capital_web3_private.reject_lite_legacy_after_v02() from public,anon,authenticated,service_role;
+create trigger cofre_lite_legacy_readonly before insert or update on capital_web3_private.cofre_lite_signals
+for each row execute function capital_web3_private.reject_lite_legacy_after_v02();
 
 create function capital_web3_private.validate_lite_intake_v02(v jsonb)
 returns void language plpgsql immutable set search_path='' as $$

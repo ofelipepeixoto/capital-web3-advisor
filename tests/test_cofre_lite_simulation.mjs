@@ -145,3 +145,20 @@ test('legacy signals require explicit import and renewed consent; no data is los
   await ui.save();assert.equal(saved[0].legacy_revision,1);assert.equal(ui.legacyRevision,null);
   ui.answers.urgency='no';await ui.save();assert.equal(saved[1].legacy_revision,null);
 });
+
+test('legacy data that changes before explicit import is not loaded or silently acknowledged', async () => {
+  const { SIGNAL_IDS }=await import('../apps/staging/cofre-lite-signals.mjs');
+  const signals=Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']));
+  const api=async(path)=>path.endsWith('/lite-intake') ? {data:{legacy_available:true,legacy_revision:1}} :
+    {data:{revision:2,intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals}}};
+  const ui=new LiteSimulation(new Element('section'),{api,cases:()=>[{id:'case-1'}],confirm:()=>true});
+  ui.caseId='case-1';await ui.load();await ui.importLegacy();
+  assert.equal(ui.loaded,false);assert.equal(ui.legacyAvailable,true);assert.match(ui.notice,/Não foi possível carregar/);assert.deepEqual(ui.answers,{});
+});
+
+test('new blank intake requires explicit confirmation when legacy data exists', async () => {
+  const root=new Element('section');let confirmed=false;
+  const ui=new LiteSimulation(root,{api:async()=>({data:{legacy_available:true,legacy_revision:4}}),cases:()=>[{id:'case-1'}],confirm:()=>confirmed});
+  ui.caseId='case-1';await ui.load();ui.startWithoutLegacy();assert.equal(ui.loaded,false);assert.equal(ui.legacyAvailable,true);
+  confirmed=true;ui.startWithoutLegacy();assert.equal(ui.loaded,true);assert.equal(ui.legacyRevision,4);assert.deepEqual(ui.consents,{assessment:false,storage:false});
+});
