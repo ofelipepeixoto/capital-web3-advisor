@@ -2,11 +2,13 @@ import { PortalClient, validateConfig } from './client.mjs';
 import { CofreWorkspace, renderCofreReport, renderPublicationContext } from './cofre-ui.mjs';
 import { createAuthControls, consumeAuthFragment } from './auth-controls.mjs';
 import { AuthControlsUI } from './auth-controls-ui.mjs';
+import { LiteSimulation } from './cofre-lite-simulation.mjs';
 
 const $ = id => document.getElementById(id);
 let client, session, reports = [], publications = [], generation = 0, detailGeneration = 0;
 let busy = false;
 let roster = [], activeView = 'diagnostics', cofre, authUI;
+const lite = new LiteSimulation($('lite-workspace'));
 let accessLink = null, accessLinkError = false;
 // Remove Auth fragments before configuration requests or rendering any account data.
 try { accessLink = consumeAuthFragment(location.href, url => history.replaceState(history.state, '', url)); }
@@ -42,12 +44,12 @@ function reportNavigation(panel, body) {
 }
 function clearWorkspace() {
   ++generation; ++detailGeneration; session = null; reports = []; publications = []; requestKeys.clear();
-  roster = []; activeView = 'diagnostics'; cofre?.clear();
+  roster = []; activeView = 'diagnostics'; cofre?.clear(); lite.clear();
   authUI?.clear();
   $('workspace').hidden = true; $('login-panel').hidden = false; $('logout').hidden = true;
   $('identity').textContent = ''; $('reports').replaceChildren(); $('detail').replaceChildren();
   $('password').value = '';
-  $('workspace-nav').hidden = true; $('cases-panel').hidden = true;
+  $('workspace-nav').hidden = true; $('cases-panel').hidden = true; $('journeys-panel').hidden = true; $('lite-panel').hidden = true;
 }
 function button(label, run, cls = '') {
   const node = element('button', label, cls);
@@ -83,7 +85,7 @@ async function refresh() {
   const staff = session.assignments.length > 0 || roster.length > 0;
   $('identity').textContent = staff ? 'Console da equipe · atendimentos fictícios e revisão por caso' : 'Portal do cliente · somente versões publicadas para você';
   $('workspace-nav').hidden = !staff;
-  if (staff) await cofre.load(roster); else { cofre.clear(); activeView = 'diagnostics'; }
+  if (staff) await cofre.load(roster); else { cofre.clear(); lite.clear(); activeView = 'diagnostics'; }
   if (epoch !== generation || !session) return;
   showView(activeView);
   if (!reports.length) $('reports').append(element('p', staff
@@ -238,23 +240,28 @@ async function openReport(report) {
 
 function showView(view, focus = false) {
   activeView = view;
-  $('cases-panel').hidden = view !== 'cases'; $('diagnostics-panel').hidden = view !== 'diagnostics';
+  $('journeys-panel').hidden = view !== 'journeys'; $('cases-panel').hidden = view !== 'cases'; $('diagnostics-panel').hidden = view !== 'diagnostics'; $('lite-panel').hidden = view !== 'lite';
+  $('journeys-tab').setAttribute('aria-current', view === 'journeys' ? 'page' : 'false');
   $('cases-tab').setAttribute('aria-current', view === 'cases' ? 'page' : 'false');
   $('reports-tab').setAttribute('aria-current', view === 'diagnostics' ? 'page' : 'false');
-  if (focus) $(view === 'cases' ? 'cases-heading' : 'reports-heading').focus();
+  $('lite-tab').setAttribute('aria-current', view === 'lite' ? 'page' : 'false');
+  if (focus) $({journeys:'journeys-heading',cases:'cases-heading',lite:'lite-heading',diagnostics:'reports-heading'}[view]).focus();
 }
 cofre = new CofreWorkspace({ root: $('cofre-workspace'), api: (path, body) => client.api(path, body),
   currentSession: () => session, notice: message,
   onCreated: async () => { const epoch = generation, current = await client.api('/session'); if (epoch === generation && session && current.user_id === session.user_id) session = current; },
   onSaved: async reportId => { await refresh(); if (!session) return; showView('diagnostics'); const report = reports.find(row => row.id === reportId); if (report) await openReport(report); },
 });
+$('journeys-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('journeys', true); });
+$('open-cofre').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
+$('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.root.children.length) lite.render(); showView('lite', true); } });
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
-window.addEventListener('beforeunload', event => { if (cofre.dirty && session) { event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
 
 async function continueAccess(current) {
   if (!Array.isArray(current.assignments) || typeof current.user_id !== 'string') throw new Error('Sessão inválida.');
-  session = current; ++generation; activeView = 'cases';
+  session = current; ++generation; activeView = 'journeys';
   const epoch = generation, access = await client.api('/access-requirements');
   if (epoch !== generation || !session) return;
   if (typeof access.mfa_required !== 'boolean' || !['aal1','aal2'].includes(access.assurance_level)) throw new Error('Sessão inválida.');
@@ -277,7 +284,7 @@ $('login-form').addEventListener('submit', async event => {
   finally { busy = false; $('login').disabled = false; $('login').textContent = 'Entrar'; }
 });
 $('logout').addEventListener('click', async () => {
-  if (cofre?.dirty && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
+  if ((cofre?.dirty || lite.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }
   catch { message('Acesso local encerrado. O servidor não confirmou a saída; tente novamente ao recuperar a conexão.'); }
 });

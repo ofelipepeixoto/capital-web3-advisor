@@ -37,6 +37,10 @@ insert into capital_web3_private.cofre_workspace_members(workspace_id,user_id,di
 do $$ begin
  if has_table_privilege('authenticated','capital_web3.cofre_intakes','INSERT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_workspace_members','SELECT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','SELECT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','INSERT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','SELECT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','INSERT')
  or has_column_privilege('authenticated','capital_web3.cofre_intakes','created_by','SELECT') then
  raise exception 'unexpected COFRE privileges'; end if;
 end $$;
@@ -80,6 +84,30 @@ commit;`);
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
   pass('COFRE new case starts without an invented intake', blank.status === 200 && blank.body.data === null);
+  const partialPath = '/cofre/cases/' + caseId + '/partial';
+  const partialIntake = syntheticCofreIntake(); partialIntake.profile.objective = ''; partialIntake.profile.experience = '';
+  partialIntake.inventory[0].category = '';
+  const partialSave = { intake: partialIntake, expected_revision: 0, base_revision: 0, idempotency_key: randomUUID() };
+  pass('COFRE partial denied for client', (await result('clientA', partialPath, partialSave)).status === 404);
+  pass('COFRE partial denied for foreign analyst', (await result('authorB', partialPath, partialSave)).status === 404);
+  pass('COFRE partial denied for reviewer', (await result('rui', partialPath, partialSave)).status === 404);
+  const noConsent = fresh(partialSave); noConsent.intake.consents.storage = false;
+  pass('COFRE partial requires explicit synthetic storage consent', (await result('ana', partialPath, noConsent)).status === 400);
+  const secret = fresh(partialSave); secret.intake.seed = 'no-secrets';
+  pass('COFRE partial rejects unknown secret fields', (await result('ana', partialPath, secret)).status === 400);
+  const partialResults = await Promise.all([result('ana', partialPath, partialSave), result('ana', partialPath, partialSave)]);
+  pass('COFRE partial retry is idempotent', partialResults.every(r => r.status === 200 && r.body.data.revision === 1));
+  const altered = fresh(partialSave); altered.intake.profile.objective = 'protect_family';
+  pass('COFRE partial changed input cannot reuse key', (await result('ana', partialPath, altered)).status === 409);
+  const conflict = fresh(altered); conflict.idempotency_key = randomUUID();
+  pass('COFRE partial stale revision is rejected', (await result('ana', partialPath, conflict)).status === 409);
+  pass('COFRE partial read denied to client and foreign analyst', (await result('clientA', partialPath)).status === 404 && (await result('authorB', partialPath)).status === 404);
+  const nextA = fresh(partialSave); nextA.expected_revision=1; nextA.idempotency_key=randomUUID(); nextA.intake.profile.liquidity='short_term';
+  const nextB = fresh(partialSave); nextB.expected_revision=1; nextB.idempotency_key=randomUUID(); nextB.intake.profile.loss_capacity='essential';
+  const racedPartial = await Promise.all([result('ana',partialPath,nextA),result('ana',partialPath,nextB)]);
+  pass('COFRE concurrent partial edits preserve one winner and reject one stale revision', racedPartial.map(r=>r.status).sort().join(',')==='200,409');
+  const fetchedPartial = await result('ana', partialPath);
+  pass('COFRE partial can be resumed without filling empty fields', fetchedPartial.status === 200 && fetchedPartial.body.data.intake.profile.objective === '' && fetchedPartial.body.data.stale === false);
   const save = { intake: syntheticCofreIntake(), expected_revision: 0, idempotency_key: randomUUID() };
   const marker = 'fictional_secret_marker_do_not_echo';
   for (const mutate of [
@@ -101,6 +129,8 @@ commit;`);
   const initial = await result('ana', intakePath, save);
   const versionId = initial.body.data?.report_version_id;
   requireCondition(initial.status === 200 && initial.body.data?.revision === 1 && UUID.test(versionId), 'COFRE server generated first draft');
+  const afterFinal = await result('ana', partialPath);
+  pass('COFRE partial remains preserved and marked stale after final version', afterFinal.status === 200 && afterFinal.body.data.stale === true);
   const retry = await result('ana', intakePath, save);
   pass('COFRE same save retry returns the exact immutable revision', retry.status === 200 &&
     retry.body.data.report_version_id === versionId && retry.body.data.revision === 1);

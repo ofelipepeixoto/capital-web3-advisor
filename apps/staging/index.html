@@ -29,8 +29,28 @@
     <section id="auth-controls" class="card compact" hidden aria-label="Segurança da conta"></section>
     <section id="workspace" hidden>
       <div class="toolbar"><div><h1>Seu espaço Capital Web3</h1><p id="identity" class="muted"></p></div><button id="refresh">Atualizar acesso</button></div>
-      <nav id="workspace-nav" class="actions" aria-label="Área de trabalho" hidden><button id="cases-tab" aria-controls="cases-panel">Atendimentos</button><button id="reports-tab" aria-controls="diagnostics-panel">Diagnósticos</button></nav>
+      <nav id="workspace-nav" class="actions" aria-label="Área de trabalho" hidden><button id="journeys-tab" aria-controls="journeys-panel">Jornadas</button><button id="cases-tab" aria-controls="cases-panel">Atendimentos</button><button id="lite-tab" aria-controls="lite-panel">Exercício COFRE Lite</button><button id="reports-tab" aria-controls="diagnostics-panel">Diagnósticos</button></nav>
+      <section id="journeys-panel" hidden aria-labelledby="journeys-heading">
+        <h2 id="journeys-heading" tabindex="-1">Jornadas de diagnóstico</h2>
+        <p>Escolha uma jornada para acompanhar o atendimento. A equipe revisa cada resultado antes da entrega.</p>
+        <div class="card journey-available">
+          <h3>COFRE Individual</h3>
+          <p><strong>Disponível para homologação fictícia.</strong> O fluxo atual reúne objetivos, práticas de segurança e inventário categórico.</p>
+          <p class="muted">Este ensaio cobre apenas parte dos materiais COFRE. Respostas não salvas permanecem somente na sessão. A gravação parcial depende da instalação e validação da migração.</p>
+          <button id="open-cofre" class="primary" type="button">Abrir atendimentos COFRE</button>
+        </div>
+        <section class="journey-planned" aria-labelledby="planned-heading">
+          <h3 id="planned-heading">Em planejamento</h3>
+          <p>Estas jornadas completas ainda não podem ser iniciadas nesta aplicação. Um exercício COFRE Lite fictício está disponível no menu.</p>
+          <ul>
+            <li><strong>COFRE Lite e COFRE-6:</strong> diagnóstico e acompanhamento alinhados aos respectivos materiais.</li>
+            <li><strong>RASTRO:</strong> rastreabilidade, fontes e evidências para análise.</li>
+            <li><strong>Tesouraria multisig:</strong> práticas e governança para pessoa ou organização.</li>
+          </ul>
+        </section>
+      </section>
       <section id="cases-panel" hidden aria-labelledby="cases-heading"><h2 id="cases-heading" tabindex="-1">Atendimentos COFRE Individual</h2><div id="cofre-workspace"></div></section>
+      <section id="lite-panel" class="card" hidden aria-labelledby="lite-heading"><h2 id="lite-heading" tabindex="-1">Exercício COFRE Lite</h2><div id="lite-workspace"></div></section>
       <section id="diagnostics-panel" aria-label="Diagnósticos"><div class="layout"><aside class="card"><h2 id="reports-heading" tabindex="-1">Versões disponíveis</h2><div id="reports"></div><p class="muted">Até 100 versões por consulta.</p></aside><article id="detail" class="card" aria-live="polite"><h2>Selecione um diagnóstico</h2></article></div></section>
     </section>
   </main>
