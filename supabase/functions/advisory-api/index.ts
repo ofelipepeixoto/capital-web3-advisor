@@ -414,6 +414,11 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
       if (request.method === "GET" && path === "/publications") {
         return respond(200, { data: await database("/rest/v1/advisory_publications?select=id,case_id,report_version_id,published_at,expires_at&order=published_at.desc&limit=100"), request_id: requestId });
       }
+      const liteEligibilityRoute = path.match(/^\/reports\/([^/]+)\/lite-eligibility$/);
+      if (liteEligibilityRoute && request.method === 'GET') {
+        const data = await rpc('advisory_lite_report_eligibility', {p_report_version_id:assertUuid(liteEligibilityRoute[1])});
+        return respond(200, {data, request_id:requestId});
+      }
       const reportRoute = path.match(/^\/reports\/([^/]+)(?:\/(download|review-package|review|publish))?$/);
       if (reportRoute) {
         const versionId = assertUuid(reportRoute[1]);

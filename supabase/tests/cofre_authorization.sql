@@ -196,11 +196,15 @@ insert into cofre_test_data values('lite_complete', jsonb_set(jsonb_set(jsonb_se
 select capital_web3.advisory_lite_intake_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite_complete'),1,'73000000-0000-0000-0000-000000000210',null);
 insert into cofre_test_data values('lite_ready',capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,2,'73000000-0000-0000-0000-000000000211'));
 insert into cofre_test_data values('lite_ready_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_ready')->>'report_version_id')::uuid));
+select pg_temp.require(capital_web3.advisory_lite_report_eligibility((pg_temp.data('lite_ready')->>'report_version_id')::uuid)->>'can_review'='false','Lite author cannot self-review according to eligibility');
 select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-0000-0000-000000000011');
+select pg_temp.require(capital_web3.advisory_lite_report_eligibility((pg_temp.data('lite_ready')->>'report_version_id')::uuid)->>'can_review'='true','assigned reviewer sees ready Lite');
 select capital_web3.advisory_review_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000212');
+select pg_temp.require(capital_web3.advisory_lite_report_eligibility((pg_temp.data('lite_ready')->>'report_version_id')::uuid)->>'can_publish_with_valid_recipients'='true','publisher sees approved Lite');
 insert into cofre_test_data values('lite_published', capital_web3.advisory_publish_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,array['13000000-0000-0000-0000-000000000001'::uuid],pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256',null,'73000000-0000-0000-0000-000000000213'));
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
 select pg_temp.require((select count(*)=1 from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_ready')->>'report_version_id')::uuid),'assigned recipient reads published Lite');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_report_eligibility((pg_temp.data('lite_ready')->>'report_version_id')::uuid)$q$,'42501','Lite eligibility is private to assigned staff');
 select pg_temp.expect_error($q$select capital_web3.advisory_record_receipt_unguarded((pg_temp.data('lite_published')->>'publication_id')::uuid)$q$,'42501','unguarded receipt is inaccessible');
 select pg_temp.require(capital_web3.advisory_record_receipt((pg_temp.data('lite_published')->>'publication_id')::uuid)->>'publication_id'=pg_temp.data('lite_published')->>'publication_id','recipient may record a Lite receipt');
 select pg_temp.identity('13000000-0000-0000-0000-000000000002','93000000-0000-0000-0000-000000000002');
@@ -221,6 +225,8 @@ select pg_temp.expect_error($q$select capital_web3.advisory_lite_create_draft((p
 select capital_web3.advisory_lite_intake_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite_complete'),'{controls,secret_exposure}','"yes"'),2,'73000000-0000-0000-0000-000000000214',null);
 insert into cofre_test_data values('lite_blocked',capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,3,'73000000-0000-0000-0000-000000000215'));
 insert into cofre_test_data values('lite_blocked_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_blocked')->>'report_version_id')::uuid));
+select pg_temp.require(capital_web3.advisory_lite_report_eligibility((pg_temp.data('lite_blocked')->>'report_version_id')::uuid)->>'state'='blocked','Lite eligibility reports blocked status');
+select pg_temp.require(capital_web3.advisory_lite_report_eligibility((pg_temp.data('lite_ready')->>'report_version_id')::uuid)->>'state'='new_intake_required','Lite eligibility reports old epoch');
 select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-0000-0000-000000000011');
 select pg_temp.expect_error($q$select capital_web3.advisory_review_report((pg_temp.data('lite_blocked')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_blocked_package')->>'content_sha256',pg_temp.data('lite_blocked_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000216')$q$,'23514','blocked Lite cannot be approved');
 select pg_temp.expect_error($q$select capital_web3.advisory_publish_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,array['13000000-0000-0000-0000-000000000001'::uuid],pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256',null,'73000000-0000-0000-0000-000000000217')$q$,'23514','previously approved Lite cannot publish after newer intake');
