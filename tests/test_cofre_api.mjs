@@ -197,3 +197,28 @@ test('partial intake accepts only consented closed synthetic records with honest
     assert.equal(test.calls.length, 1);
   }
 });
+
+test('Lite routes enforce authenticated request, explicit consent and closed ten-signal schema', async () => {
+  const { SIGNAL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-rules.ts');
+  const draft = { schema_version: 'cofre-lite-signals-0.1', synthetic: true,
+    consents: { assessment: true, storage: true }, signals: Object.fromEntries(SIGNAL_IDS.map(k => [k, 'unknown'])) };
+  const path = `/cofre/cases/${CASE}/lite-signals`;
+  const body = { intake: draft, expected_revision: 0, idempotency_key: KEY };
+  const h=setup({data:{revision:1}});
+  assert.equal((await h.handler(request(path,{method:'POST',body,authenticated:false}))).status,401);
+  assert.equal((await h.handler(request(path,{method:'POST',body}))).status,200);
+  assert.ok(h.calls.at(-1).url.endsWith('/rest/v1/rpc/advisory_lite_signals_save'));
+  for (const invalid of [ {...draft, secret: 'marker'}, {...draft,consents:{assessment:true,storage:false}},
+    {...draft,signals:{...draft.signals, urgency:'unbounded text'}}, {...draft,signals:{...draft.signals, extra:'marker'}} ]) {
+    const before=h.calls.length; const res=await h.handler(request(path,{method:'POST',body:{...body,intake:invalid}}));
+    assert.equal(res.status,400); assert.equal(h.calls.length,before+1); assert.ok(!(await res.text()).includes('marker'));
+  }
+});
+
+test('Lite receipt quota maps to a specific sanitized limit even when upstream responds 500', async () => {
+  const { SIGNAL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-rules.ts');
+  const body = {intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals:Object.fromEntries(SIGNAL_IDS.map(k=>[k,'unknown']))},expected_revision:0,idempotency_key:KEY};
+  const { handler }=setup({data:{code:'54000',message:'private marker'},dbStatus:500});
+  const result=await handler(request(`/cofre/cases/${CASE}/lite-signals`,{method:'POST',body}));
+  assert.equal(result.status,429); const text=await result.text(); assert.match(text,/lite_save_limit/);assert.ok(!text.includes('private marker'));
+});

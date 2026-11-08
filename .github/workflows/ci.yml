@@ -129,6 +129,9 @@ jobs:
           sleep 1
           supabase migration new candidate_cofre_canonical_report
           cp "$GITHUB_WORKSPACE/supabase/pending/cofre_canonical_report.sql" supabase/migrations/*_candidate_cofre_canonical_report.sql
+          sleep 1
+          supabase migration new candidate_cofre_lite_signals
+          cp "$GITHUB_WORKSPACE/supabase/pending/cofre_lite_signals.sql" supabase/migrations/*_candidate_cofre_lite_signals.sql
       - name: Start disposable Auth PostgREST Storage database
         run: |
           umask 077

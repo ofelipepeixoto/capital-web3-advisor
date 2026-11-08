@@ -125,6 +125,45 @@ select pg_temp.require(capital_web3.advisory_create_cofre_case('83000000-0000-00
 select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),jsonb_set(pg_temp.data('content'),'{summary}','"fabricated synthetic safety claim"'),0,'73000000-0000-0000-0000-000000000089')$q$,
  '22023','direct RPC denies fabricated report text');
+-- Versioned Lite signals persist by case only for the assigned analyst and require consent.
+insert into cofre_test_data values('lite',jsonb_build_object(
+ 'schema_version','cofre-lite-signals-0.1','synthetic',true,
+ 'consents',jsonb_build_object('assessment',true,'storage',true),
+ 'signals',jsonb_build_object('urgency','unknown','guaranteed_return','unknown','unsolicited_link','unknown',
+ 'different_domain','unknown','unverified_contract','unknown','unlimited_approval','unknown','secret_request','unknown',
+ 'missing_team_docs','unknown','unclear_tokenomics','unknown','profit_screenshots','unknown')));
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','Lite off by default denies get');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000100')$q$,'42501','Lite off by default denies direct save');
+reset role;
+insert into capital_web3_private.cofre_lite_features(workspace_id,enabled) values('83000000-0000-0000-0000-000000000001',true);
+set local role authenticated;
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+select pg_temp.require(capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid) is null,'new case has no Lite signals');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite')||'{"secret":"do-not-collect"}'::jsonb,0,'73000000-0000-0000-0000-000000000100')$q$,'22023','Lite rejects invented secret field');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite'),'{consents,storage}','false'),0,'73000000-0000-0000-0000-000000000100')$q$,'22023','Lite requires explicit storage consent');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite'),'{signals,urgency}','null'),0,'73000000-0000-0000-0000-000000000100')$q$,'22023','Lite rejects null signal');
+insert into cofre_test_data values('lite_saved',capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000100'));
+select pg_temp.require((pg_temp.data('lite_saved')->>'revision')::integer=1,'Lite saves first revision');
+select pg_temp.require(capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000100')=pg_temp.data('lite_saved'),'Lite retry is idempotent');
+select pg_temp.require(capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)#>>'{intake,signals,urgency}'='unknown','Lite persists unknown');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite'),'{signals,urgency}','"yes"'),0,'73000000-0000-0000-0000-000000000100')$q$,'23505','Lite rejects changed idempotency payload');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000101')$q$,'23514','Lite denies stale revision');
+select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','client cannot read analyst Lite intake');
+select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-0000-0000-000000000011');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','reviewer cannot read analyst Lite intake');
+select pg_temp.identity('13000000-0000-0000-0000-000000000012','93000000-0000-0000-0000-000000000012');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),1,'73000000-0000-0000-0000-000000000102')$q$,'42501','foreign user cannot save Lite intake');
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+select pg_temp.expect_error($q$select * from capital_web3_private.cofre_lite_signals$q$,'42501','direct access to Lite table denied');
+reset role;
+insert into capital_web3_private.cofre_lite_signal_receipts(actor,key,request_hash,result)
+select '13000000-0000-0000-0000-000000000010'::uuid,md5(n::text)::uuid,repeat('0',64),'{}'::jsonb from generate_series(1,127) n;
+set local role authenticated;
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),1,'73000000-0000-0000-0000-000000000103')$q$,'54000','Lite receipt quota blocks new keys');
+select pg_temp.require(capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000100')=pg_temp.data('lite_saved'),'Lite existing retry remains possible at quota');
+
 insert into cofre_test_data values('partial',capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
  jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091'));
 select pg_temp.require((pg_temp.data('partial')->>'revision')::integer=1,'partial save stores one revision');
@@ -272,6 +311,7 @@ reset role;
 delete from auth.sessions where id='93000000-0000-0000-0000-000000000010';
 set local role authenticated;
 select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010','aal1');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','revoked analyst session cannot read Lite');
 select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','revoked analyst session cannot read partial');
 select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),1,1,'73000000-0000-0000-0000-000000000092')$q$,'42501','revoked analyst session cannot write partial');
 reset role;

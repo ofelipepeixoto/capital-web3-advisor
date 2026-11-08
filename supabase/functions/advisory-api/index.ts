@@ -3,6 +3,7 @@
  * Native fetch avoids runtime packages and only reaches the operator's project URL.
  */
 import { validateCofreIntake, validatePartialCofreIntake, buildCofreReport } from './cofre.ts';
+import { assessSignals } from './cofre-lite-rules.ts';
 type EnvReader = (name: string) => string | undefined;
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type JsonObject = Record<string, unknown>;
@@ -236,6 +237,7 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         const result = await readBoundedJson(response, UPSTREAM_LIMIT);
         if (!response.ok) {
           const code = isObject(result) ? result.code : null;
+          if (pathname === '/rest/v1/rpc/advisory_lite_signals_save' && code === '54000') throw new ApiError(429, 'lite_save_limit');
           if (response.status >= 500) throw new ApiError(503, "upstream_unavailable");
           if (code === "23505" || code === "23514") throw new ApiError(409, "state_conflict");
           if (code === "22023" || code === "22P02") throw new ApiError(400, "invalid_request");
@@ -265,6 +267,26 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
           p_idempotency_key: assertUuid(body.idempotency_key),
         });
         return respond(200, { data, request_id: requestId });
+      }
+      const liteRoute = path.match(/^\/cofre\/cases\/([^/]+)\/lite-signals$/);
+      if (liteRoute) {
+        const caseId = assertUuid(liteRoute[1]);
+        if (request.method === 'GET') return respond(200, { data: await rpc('advisory_lite_signals_get', { p_case_id: caseId }), request_id: requestId });
+        if (request.method === 'POST') {
+          const body = await readBody(request);
+          exactKeys(body, ['intake', 'expected_revision', 'idempotency_key']);
+          if (!Number.isSafeInteger(body.expected_revision) || (body.expected_revision as number)<0 || (body.expected_revision as number)>10000) throw new ApiError(400,'invalid_request');
+          const intake = body.intake;
+          if (!isObject(intake)) throw new ApiError(400,'invalid_lite_intake');
+          exactKeys(intake, ['schema_version','synthetic','consents','signals']);
+          if (intake.schema_version !== 'cofre-lite-signals-0.1' || intake.synthetic !== true || !isObject(intake.consents)) throw new ApiError(400,'invalid_lite_intake');
+          exactKeys(intake.consents, ['assessment','storage']);
+          if (intake.consents.assessment !== true || intake.consents.storage !== true) throw new ApiError(400,'invalid_lite_intake');
+          try { assessSignals(intake.signals); } catch { throw new ApiError(400,'invalid_lite_intake'); }
+          const data = await rpc('advisory_lite_signals_save', { p_case_id: caseId, p_intake: intake,
+            p_expected_revision: body.expected_revision, p_idempotency_key: assertUuid(body.idempotency_key) });
+          return respond(200, { data, request_id: requestId });
+        }
       }
       const partialRoute = path.match(/^\/cofre\/cases\/([^/]+)\/partial$/);
       if (partialRoute) {
