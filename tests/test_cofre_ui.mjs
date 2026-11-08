@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { webcrypto } from 'node:crypto';
-import { CofreWorkspace, emptyCofreIntake, setControl, renderCofreReport, renderPublicationContext } from '../apps/staging/cofre-ui.mjs';
+import { CofreWorkspace, emptyCofreIntake, setControl, renderCofreReport, renderLiteReport, renderPublicationContext } from '../apps/staging/cofre-ui.mjs';
+
+import { buildLiteReport, LITE_CONTROL_IDS } from '../supabase/functions/advisory-api/cofre-lite-report.mjs';
+import { SIGNAL_IDS } from '../supabase/functions/advisory-api/cofre-lite-signals.mjs';
 
 // Synthetic DOM interaction tests: API boundaries and user-visible states, no layout claims.
 class Element {
@@ -275,4 +278,39 @@ test('opening detects a final revision changed between final and partial reads',
   await h.ui.load(roster); await h.ui.open(entry);
   assert.ok(h.root.textContent.includes('A versão mudou durante a abertura'));
   assert.equal(button(h.root,'Salvar progresso'),undefined);
+});
+
+
+test('Lite report presents the same complete, inert content for review and client reading', () => {
+  const intake = { schema_version: 'cofre-lite-intake-0.2', synthetic: true,
+    consents: { assessment: true, storage: true }, profile: { experience: 'unknown' },
+    controls: Object.fromEntries(LITE_CONTROL_IDS.map(id => [id, 'unknown'])),
+    signals: Object.fromEntries(SIGNAL_IDS.map(id => [id, 'unknown'])) };
+  intake.controls.secret_exposure = 'yes'; intake.controls.watch = 'not_applicable';
+  intake.signals.guaranteed_return = 'yes'; intake.signals.urgency = 'not_applicable';
+  const report = buildLiteReport(intake);
+  const attack = '<img src=x onerror=alert(1)>';
+  report.findings[0].evidence = attack;
+  report.human_review = { status: 'approved', note: 'UNTRUSTED_APPROVAL' };
+  // The shared renderer is intentionally independent of the viewer's role.
+  for (const viewer of ['reviewer', 'client']) {
+    const result = renderLiteReport(report);
+    for (const text of ['Interromper e pedir apoio', 'Experiência', 'Não se aplica', 'Exposição de segredo',
+      'Promessa de retorno garantido', 'Avaliação declarada', 'Possível impacto', 'Ação proposta',
+      'Experiência não informada', 'Backup não informado', 'Plano para revisão', 'Prioridade',
+      'Limites deste diagnóstico', 'Somente dados fictícios', attack]) {
+      assert.ok(result.textContent.includes(text), `${viewer}: ${text}`);
+    }
+    assert.equal(result.querySelectorAll('.finding').length, report.controls.length + report.findings.length);
+    assert.equal(result.querySelector('pre'), null); assert.equal(result.querySelector('img'), null);
+    assert.equal(result.querySelector('a'), null); assert.ok(!result.textContent.includes('UNTRUSTED_APPROVAL'));
+  }
+  const complete = structuredClone(intake);
+  complete.profile.experience = 'some';
+  for (const id of LITE_CONTROL_IDS) complete.controls[id] = id === 'secret_exposure' ? 'no' : 'yes';
+  for (const id of SIGNAL_IDS) complete.signals[id] = 'no';
+  assert.ok(renderLiteReport(buildLiteReport(complete)).textContent.includes('Respostas completas; aguardam revisão'));
+  complete.controls.backup = 'unknown';
+  assert.ok(renderLiteReport(buildLiteReport(complete)).textContent.includes('Faltam informações'));
+  assert.ok(renderLiteReport({ status: '__proto__', gaps: ['controls.__proto__'] }).textContent.includes('Controle não identificado'));
 });
