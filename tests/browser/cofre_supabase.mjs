@@ -187,11 +187,29 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await client.getByRole('heading', { name: 'Confira o acesso novamente', exact: true }).waitFor();
     expect(await client.evaluate(() => window.__cofrePrintCalls) === 1 && await client.locator('#detail .cofre-report').count() === 0,
       'revoked stale page cannot print and clears the rendered report');
-    gate = 'logout clears workflow and questionnaire state';
+    gate = 'cancel logout preserves unsaved questionnaire';
+    await analyst.locator('#cases-tab').click();
+    await analyst.getByRole('button', { name: '2. Objetivos', exact: true }).click();
+    await analyst.locator('#cofre-objective').selectOption('organize');
+    let logoutWarning = '';
+    analyst.once('dialog', async dialog => { logoutWarning = dialog.message(); await dialog.dismiss(); });
+    await analyst.locator('#logout').click();
+    expect(logoutWarning.includes('respostas não salvas') &&
+      await analyst.locator('#workspace').isVisible() &&
+      await analyst.locator('#cofre-objective').inputValue() === 'organize',
+      'canceling logout retains the active session and unsaved answer');
+    gate = 'confirmed logout clears workflow and questionnaire state';
+    analyst.once('dialog', dialog => dialog.accept());
     await analyst.locator('#logout').click();
     await analyst.locator('#login-panel').waitFor({ state: 'visible' });
     expect(await analyst.locator('#cofre-workspace').innerText() === '' && await analyst.locator('#password').inputValue() === '',
       'logout clears questionnaire and password fields');
+    gate = 'logout without edits does not prompt';
+    let cleanPrompt = false;
+    foreign.once('dialog', async dialog => { cleanPrompt = true; await dialog.dismiss(); });
+    await foreign.locator('#logout').click();
+    await foreign.locator('#login-panel').waitFor({ state: 'visible' });
+    expect(!cleanPrompt, 'logout without unsaved changes does not prompt');
     expect(diagnostics.every(row => row.errors.length === 0), 'COFRE browser journey has no uncaught page errors');
     if (artifact) await writeFile(artifact + '/cofre-manifest.json', JSON.stringify({ checks, browser: browser.version(),
       synthetic_only: true, transport: 'Chromium Edge route bridge to actual Node handler; real disposable Auth/PostgREST; deployed Edge unvalidated' }, null, 2));

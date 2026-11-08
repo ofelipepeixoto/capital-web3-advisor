@@ -277,6 +277,7 @@ $('login-form').addEventListener('submit', async event => {
   finally { busy = false; $('login').disabled = false; $('login').textContent = 'Entrar'; }
 });
 $('logout').addEventListener('click', async () => {
+  if (cofre?.dirty && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }
   catch { message('Acesso local encerrado. O servidor não confirmou a saída; tente novamente ao recuperar a conexão.'); }
 });

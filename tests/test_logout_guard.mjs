@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
+import { test } from 'node:test';
+
+// Exercise the actual click handler with a controlled confirmation and session.
+const app = await readFile(new URL('../apps/staging/app.mjs', import.meta.url), 'utf8');
+const start = app.indexOf("$('logout').addEventListener('click'");
+const end = app.indexOf("$('refresh').addEventListener", start);
+assert.ok(start >= 0 && end > start, 'logout and refresh handlers are present');
+const handlerSource = app.slice(start, end);
+
+async function exercise({ dirty, accept = false, fail = false }) {
+  let handler, prompts = [], logoutCalls = 0, sessionOpen = true, notice = '';
+  const cofre = { dirty, answer: 'preservada' };
+  const client = { logout: async () => { logoutCalls++; sessionOpen = false; if (fail) throw Error('offline'); } };
+  const window = { confirm: text => { prompts.push(text); return accept; } };
+  runInNewContext(handlerSource, { $: () => ({ addEventListener: (_, cb) => { handler = cb; } }), cofre, client, window, message: value => { notice = value; } });
+  await handler();
+  return { prompts, logoutCalls, sessionOpen, answer: cofre.answer, notice };
+}
+
+test('cancelar saída mantém sessão e respostas não salvas', async () => {
+  const result = await exercise({ dirty: true, accept: false });
+  assert.match(result.prompts[0], /não salvas/);
+  assert.equal(result.logoutCalls, 0);
+  assert.equal(result.sessionOpen, true);
+  assert.equal(result.answer, 'preservada');
+});
+
+test('confirmar saída encerra sessão e avisa sobre o resultado', async () => {
+  const result = await exercise({ dirty: true, accept: true });
+  assert.equal(result.logoutCalls, 1);
+  assert.match(result.notice, /Sessão encerrada/);
+});
+
+test('saída sem alteração não pede confirmação e comunica falha remota', async () => {
+  const result = await exercise({ dirty: false, fail: true });
+  assert.equal(result.prompts.length, 0);
+  assert.equal(result.logoutCalls, 1);
+  assert.match(result.notice, /servidor não confirmou/);
+});
