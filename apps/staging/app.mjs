@@ -15,6 +15,7 @@ const lite = new LiteSimulation($('lite-workspace'), {
   // Case projection has no workspace id; the server checks workspace membership and capability.
   cases: () => (cofre?.cases || []).filter(item => session?.assignments?.some(a => a.case_id === item.id && ['analyst','admin'].includes(a.staff_role))),
   confirm: text => window.confirm(text),
+  onGenerated: async reportId => { const epoch = generation; await refresh(); if (epoch !== generation || !session) return; const report = reports.find(row => row.id === reportId); if (!report) throw new Error('Rascunho indisponível.'); showView('diagnostics', true); await openReport(report); },
 });
 const exercises = new JourneyExercise({root: $('journey-exercise'), api: (path, body) => client.api(path, body)});
 let accessLink = null, accessLinkError = false;
