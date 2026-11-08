@@ -72,6 +72,15 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
       'RASTRO example is incomplete and explicitly not saved or approved');
     expect(await analyst.getByText('Estas jornadas completas ainda não podem ser iniciadas nesta aplicação. Um exercício COFRE Lite fictício está disponível no menu.', { exact: true }).isVisible(),
       'planned journeys are identified as unavailable');
+    for (const [name, field] of [['Investidor avançado','Ativos e passivos'], ['Empresa ou DAO','Multisig e módulos']]) {
+      await analyst.getByRole('button', {name:'Escolher outro exercício',exact:true}).click();
+      await analyst.getByRole('button', {name,exact:true}).click();
+      expect(await analyst.getByLabel(field,{exact:true}).isVisible(), name + ' shows its own stages');
+      await analyst.getByRole('button', {name:'Conferir situação do exemplo',exact:true}).click();
+      await analyst.getByText('Exercício incompleto: há etapas não avaliadas ou desconhecidas.', {exact:true}).waitFor();
+      expect(await analyst.getByText('Exercício sem pontuação, verificação independente ou publicação. Nada foi salvo.', {exact:true}).count() === 1,
+        name + ' remains a synthetic and unsaved exercise');
+    }
     await analyst.getByRole('button', { name: 'Abrir atendimentos COFRE', exact: true }).click();
     expect(await analyst.locator('#cases-panel').isVisible(), 'available journey opens assigned COFRE cases');
     gate = 'synthetic Lite learning exercise';
