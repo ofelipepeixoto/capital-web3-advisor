@@ -16,12 +16,13 @@ humana. Não reproduz os arquivos privados enviados pelo titular. As referência
 - Duas metodologias: `lite_sheet_10_v1`, dez itens binários de 10 pontos, e
   `lite_document_6_v1`, seis dimensões de pesos 20,20,15,15,15,15 com níveis
   intermediários de 10 e 8. São versões candidatas separadas, exigem escolha explícita,
-  não emitem classificação interpretativa nem score completo com respostas ausentes
-  ou achado crítico desconhecido/presente. São autorrelatos, sem garantia de segurança.
+  não emitem classificação, pontos parciais ou score enquanto não houver aprovação
+  metodológica implementada no servidor. São autorrelatos, sem garantia de segurança.
 - As duas classificações e faixas da origem divergem e continuam aguardando decisão
   do titular. Integração em fluxo real exige aprovação metodológica, modelagem de
   evidências, autorização no serviço, revisão humana e testes de isolamento.
-- O argumento `criticalFinding` é a síntese verificada por quem chama de todo achado
-  crítico aplicável, incluindo exposição e anti-golpe. Nunca fixá-lo como negativo
-  na ausência de resposta; integrar a avaliação antes de expor qualquer pontuação.
+- O cálculo não aceita um indicador de risco do chamador para liberar nota. A futura
+  implementação deve derivar sinais críticos e exposição do caso autorizado no servidor
+  e verificar aprovação metodológica auditável e vinculada à versão antes de calcular.
+  A presença de todos os campos permite apenas informar cobertura, nunca segurança.
 - Nunca solicitar seed, chave privada, OTP, senha de carteira ou passphrase.

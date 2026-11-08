@@ -25,15 +25,17 @@ test('routine coverage includes due unanswered tasks and does not silently drop 
   assert.equal(assessRoutine(routine('not_applicable')).coverage,null);
   assert.equal(assessRoutine(routine('applicable','due','done')).coverage,1);
 });
-test('source models remain explicit and partial does not become a score', () => {
-  const a=sheet('unknown'); a.separation='yes'; const r=assessCandidateScore('lite_sheet_10_v1',a,'no');assert.equal(r.candidate_score,null);assert.equal(r.assessed,1);assert.equal(r.points_observed,10);
-  assert.equal(assessCandidateScore('lite_sheet_10_v1',sheet('yes'),'no').candidate_score,100);
-  const b=doc('unknown');b.backup=10;assert.equal(assessCandidateScore('lite_document_6_v1',b,'no').candidate_score,null);
+test('score is unavailable even with complete answers and a forged no-critical flag', () => {
+  const a=sheet('unknown'); a.separation='yes'; const r=assessCandidateScore('lite_sheet_10_v1',a);assert.equal(r.score,null);assert.equal(r.assessed,1);assert.equal('points_observed' in r,false);
+  const completeSheet=assessCandidateScore('lite_sheet_10_v1',sheet('yes'),'no');
+  assert.equal(completeSheet.score,null);assert.equal(completeSheet.status,'methodology_unapproved');assert.equal(completeSheet.approved_methodology,false);
+  const b=doc('unknown');b.backup=10;assert.equal(assessCandidateScore('lite_document_6_v1',b).score,null);
   const c={wallet_separation:20,backup:20,permissions:15,verification:15,antifraud:15,routine:15};
-  assert.equal(assessCandidateScore('lite_document_6_v1',c,'no').candidate_score,100);
-  assert.equal(assessCandidateScore('lite_document_6_v1',c,'yes').status,'blocked');
-  assert.equal(assessCandidateScore('lite_document_6_v1',c,'yes').candidate_score,null);
-  assert.equal(assessCandidateScore('lite_document_6_v1',c,'unknown').candidate_score,null);
+  for(const forged of ['no','yes','unknown',true,{approved:true}]) {
+    const result=assessCandidateScore('lite_document_6_v1',c,forged);
+    assert.equal(result.score,null);assert.equal(result.status,'methodology_unapproved');
+    assert.equal('candidate_score' in result,false);assert.equal('points_observed' in result,false);
+  }
 });
 test('closed contracts reject omitted, invented, malformed, accessor and cross-model answers without echoing input', () => {
   const checks=[() => assessSignals({...signals('no'),seed:'sensitive'}), () => assessSignals({}),

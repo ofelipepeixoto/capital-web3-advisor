@@ -71,30 +71,28 @@ const DOCUMENT_OPTIONS = {
 } as const;
 type Method = "lite_sheet_10_v1" | "lite_document_6_v1";
 /** Explicit model selection is mandatory. Missing answers never become 0 or a classification. */
-export function assessCandidateScore(method: unknown, values: unknown, criticalFinding: unknown) {
-  if (!has(["lite_sheet_10_v1", "lite_document_6_v1"] as const, method) ||
-      !has(["yes", "no", "unknown"] as const, criticalFinding)) return fail();
+export function assessCandidateScore(method: unknown, values: unknown) {
+  if (!has(["lite_sheet_10_v1", "lite_document_6_v1"] as const, method)) return fail();
   const keys = method === "lite_sheet_10_v1" ? SHEET_KEYS : Object.keys(DOCUMENT_OPTIONS);
   const answers = exactObject(values, keys);
-  let assessed = 0, points = 0;
+  let assessed = 0;
   for (const k of keys) {
     const a = answers[k];
     if (a === "unknown") continue;
     if (method === "lite_sheet_10_v1") {
       if (!has(["yes", "no"] as const, a)) return fail();
-      points += a === "yes" ? 10 : 0;
     } else {
       const choices = DOCUMENT_OPTIONS[k as keyof typeof DOCUMENT_OPTIONS] as readonly number[];
       if (typeof a !== "number" || !choices.includes(a)) return fail();
-      points += a;
     }
     assessed++;
   }
-  const complete = assessed === keys.length && criticalFinding === "no";
-  // No interpretive grade: documented bands need product-owner review and are not safety claims.
-  return { method: method as Method, status: criticalFinding === "yes" ? "blocked" : complete ? "complete_candidate" : "incomplete",
-    assessed, total_items: keys.length, points_observed: points, candidate_score: complete ? points : null,
-    safety_guarantee: false, approved_methodology: false } as const;
+  // No caller-provided finding or approval can unlock a score. A future server
+  // release must derive critical risks from the authorized, persisted case and
+  // check an auditable, version-bound methodology approval before calculating.
+  return { method: method as Method, status: "methodology_unapproved", assessed,
+    total_items: keys.length, score: null, safety_guarantee: false,
+    approved_methodology: false } as const;
 }
 export const LITE_SHEET_SCORE_KEYS = SHEET_KEYS;
 export const LITE_DOCUMENT_SCORE_KEYS = Object.keys(DOCUMENT_OPTIONS);
