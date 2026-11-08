@@ -1,7 +1,7 @@
 /** Real, disposable local Auth/PostgREST COFRE integration.
  * Credentials remain in memory; only fixed assertion labels enter CI output.
  */
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { COFRE_CONTROL_IDS } from '../../supabase/functions/advisory-api/cofre.ts';
 import { SIGNAL_IDS } from '../../supabase/functions/advisory-api/cofre-lite-rules.ts';
@@ -342,6 +342,30 @@ select pg_sleep(8); commit;`);
   pass('Lite delivery is visible only to intended recipient',
     (await result('clientA','/reports/'+releaseVersion)).status===200 &&
     (await result('clientB','/reports/'+releaseVersion)).status===404);
+  // Test-only fixture, on this isolated database only: COFRE deliberately prohibits
+  // attachments. Injecting synthetic metadata after publication exercises the
+  // Storage read predicate; it does NOT demonstrate that attachments are safe.
+  async function storageFixture(version,caseId) {
+    const asset=randomUUID(), object='fixture-lite/'+randomUUID()+'.json';
+    const bytes=Buffer.from('{"synthetic":true}');
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    const upload=await fetch(status.API_URL+'/storage/v1/object/capital-web3-advisory/'+object,{
+      method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+      headers:{apikey:status.SERVICE_ROLE_KEY,Authorization:'Bearer '+status.SERVICE_ROLE_KEY,'Content-Type':'application/json','x-upsert':'false'},body:bytes});
+    requireCondition(upload.ok,'synthetic Lite Storage fixture upload');
+    await sql(`begin; set local session_replication_role=replica;
+      insert into capital_web3.advisory_report_assets(id,report_version_id,case_id,bucket_id,object_name,bytes_sha256,mime_type)
+      values('${asset}','${version}','${caseId}','capital-web3-advisory','${object}','${digest}','application/json'); commit;`);
+    return {asset,object,bytes};
+  }
+  async function liteStorage(role,object) {
+    return fetch(status.API_URL+'/storage/v1/object/authenticated/capital-web3-advisory/'+object,{
+      method:'GET',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:status.ANON_KEY,Authorization:'Bearer '+users[role].token}});
+  }
+  const storageOld=await storageFixture(releaseVersion,releaseCase);
+  const initialStorage=await liteStorage('clientA',storageOld.object);
+  pass('Lite synthetic Storage fixture is readable by its recipient',initialStorage.status===200 && Buffer.from(await initialStorage.arrayBuffer()).equals(storageOld.bytes));
+  pass('Lite synthetic Storage fixture denies foreign client',!(await liteStorage('clientB',storageOld.object)).ok);
   const clientClaims=JSON.parse(Buffer.from(users.clientA.token.split('.')[1],'base64url').toString('utf8'));
   requireCondition(UUID.test(clientClaims.session_id),'Lite client session is valid');
   const clientJwt=JSON.stringify({sub:users.clientA.id,role:'authenticated',session_id:clientClaims.session_id,aal:'aal1',is_anonymous:false});
@@ -392,6 +416,7 @@ select pg_sleep(8); commit;`);
   const stalePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()});
   pass('Lite old approved version cannot be published after intake changes',stalePublication.body?.code==='23514');
   pass('New Lite intake suspends earlier client access', (await result('clientA','/reports/'+releaseVersion)).status===404);
+  pass('New Lite intake suspends earlier Storage fixture',!(await liteStorage('clientA',storageOld.object)).ok);
   const oldDataApi=await local('clientA','/rest/v1/advisory_report_versions?select=id&id=eq.'+releaseVersion);
   const oldPublication=await local('clientA','/rest/v1/advisory_publications?select=id&id=eq.'+litePublicationId);
   pass('Data API hides previous Lite version and publication',oldDataApi.status===200 && oldDataApi.body.length===0 && oldPublication.status===200 && oldPublication.body.length===0);
@@ -407,6 +432,8 @@ select pg_sleep(8); commit;`);
   const nextPublish={p_report_version_id:newVersion,p_recipient_user_ids:[users.clientA.id],p_expected_content_sha256:newPackage.content_sha256,p_expected_manifest_sha256:newPackage.manifest_sha256,p_expires_at:null,p_idempotency_key:randomUUID()};
   const nextDelivery=await local('rui','/rest/v1/rpc/advisory_publish_report',nextPublish);
   requireCondition(nextDelivery.status===200,'new Lite delivery published');
+  const storageNew=await storageFixture(newVersion,releaseCase);
+  pass('New Lite revision restores Storage fixture access',(await liteStorage('clientA',storageNew.object)).ok);
   pass('Client sees new Lite revision, not the stale one',(await result('clientA','/reports/'+newVersion)).status===200 && (await result('clientA','/reports/'+releaseVersion)).status===404);
   const nextDeliveryId=nextDelivery.body?.publication_id;
   requireCondition(UUID.test(nextDeliveryId),'next Lite delivery id exists');
@@ -420,8 +447,12 @@ select pg_sleep(8); commit;`);
     delete from capital_web3_private.cofre_workspace_members where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='analyst';`);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
   pass('Disabled Lite feature suspends client access',(await result('clientA','/reports/'+newVersion)).status===404);
+  pass('Disabled Lite feature suspends Storage fixture access',!(await liteStorage('clientA',storageNew.object)).ok);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
   pass('Re-enabled Lite feature never resurrects prior delivery',(await result('clientA','/reports/'+newVersion)).status===404);
+  pass('Re-enabled Lite feature does not restore old Storage fixture',!(await liteStorage('clientA',storageNew.object)).ok);
+  // Remove test-only associations before the old publication's manifest-bound revocation.
+  await sql(`begin; set local session_replication_role=replica; delete from capital_web3.advisory_report_assets where id in ('${storageOld.asset}','${storageNew.asset}'); commit;`);
   const liteRevoked=await local('rui','/rest/v1/rpc/advisory_revoke_publication',{
     p_publication_id:litePublicationId,p_recipient_user_id:null,p_reason:'synthetic test complete',
     p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_idempotency_key:randomUUID()});
