@@ -8,7 +8,11 @@ const $ = id => document.getElementById(id);
 let client, session, reports = [], publications = [], generation = 0, detailGeneration = 0;
 let busy = false;
 let roster = [], activeView = 'diagnostics', cofre, authUI;
-const lite = new LiteSimulation($('lite-workspace'));
+const lite = new LiteSimulation($('lite-workspace'), {
+  api: (path, body) => client.api(path, body),
+  cases: () => (cofre?.cases || []).filter(item => session?.assignments?.some(a => a.case_id === item.id && ['analyst','admin'].includes(a.staff_role)) && roster.some(r => r.user_id === session?.user_id && r.member_role === 'analyst')),
+  confirm: text => window.confirm(text),
+});
 let accessLink = null, accessLinkError = false;
 // Remove Auth fragments before configuration requests or rendering any account data.
 try { accessLink = consumeAuthFragment(location.href, url => history.replaceState(history.state, '', url)); }
@@ -87,6 +91,7 @@ async function refresh() {
   $('workspace-nav').hidden = !staff;
   if (staff) await cofre.load(roster); else { cofre.clear(); lite.clear(); activeView = 'diagnostics'; }
   if (epoch !== generation || !session) return;
+  if (!lite.reconcile()) message('Acesso ao atendimento mudou; o exercício foi fechado.');
   showView(activeView);
   if (!reports.length) $('reports').append(element('p', staff
     ? 'Nenhum rascunho atribuído. Abra Atendimentos para preparar um COFRE Individual fictício.'
