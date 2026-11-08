@@ -214,3 +214,11 @@ test('Lite routes enforce authenticated request, explicit consent and closed ten
     assert.equal(res.status,400); assert.equal(h.calls.length,before+1); assert.ok(!(await res.text()).includes('marker'));
   }
 });
+
+test('Lite receipt quota maps to a specific sanitized limit even when upstream responds 500', async () => {
+  const { SIGNAL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-rules.ts');
+  const body = {intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals:Object.fromEntries(SIGNAL_IDS.map(k=>[k,'unknown']))},expected_revision:0,idempotency_key:KEY};
+  const { handler }=setup({data:{code:'54000',message:'private marker'},dbStatus:500});
+  const result=await handler(request(`/cofre/cases/${CASE}/lite-signals`,{method:'POST',body}));
+  assert.equal(result.status,429); const text=await result.text(); assert.match(text,/lite_save_limit/);assert.ok(!text.includes('private marker'));
+});

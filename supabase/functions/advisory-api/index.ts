@@ -237,6 +237,7 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         const result = await readBoundedJson(response, UPSTREAM_LIMIT);
         if (!response.ok) {
           const code = isObject(result) ? result.code : null;
+          if (pathname === '/rest/v1/rpc/advisory_lite_signals_save' && code === '54000') throw new ApiError(429, 'lite_save_limit');
           if (response.status >= 500) throw new ApiError(503, "upstream_unavailable");
           if (code === "23505" || code === "23514") throw new ApiError(409, "state_conflict");
           if (code === "22023" || code === "22P02") throw new ApiError(400, "invalid_request");

@@ -74,6 +74,12 @@ begin
  -- Serialize both the case's revision and the actor's global idempotency quota.
  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text||':lite-actor',0));
  perform 1 from capital_web3.advisory_cases where id=p_case_id for update;
+ -- A session, assignment or switch may be revoked while waiting for either lock.
+ if capital_web3_private.require_human_identity() is distinct from v_actor
+  or not exists(select 1 from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled)
+  or not capital_web3_private.cofre_is_staff(wid,array['analyst'])
+  or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin'])
+ then raise exception 'case unavailable' using errcode='42501'; end if;
  v_request_hash:=pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('case',p_case_id,'intake',p_intake,'revision',p_expected_revision)::text,'UTF8')),'hex');
  select * into old from capital_web3_private.cofre_lite_signal_receipts where cofre_lite_signal_receipts.actor=v_actor and key=p_idempotency_key;
  if found then if old.request_hash<>v_request_hash then raise exception 'key conflict' using errcode='23505'; end if; return old.result; end if;
