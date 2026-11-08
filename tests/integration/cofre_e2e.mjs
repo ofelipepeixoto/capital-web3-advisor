@@ -352,6 +352,17 @@ select pg_sleep(4); commit;`);
     p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_idempotency_key:randomUUID()});
   pass('Lite explicitly revoked delivery is no longer readable',liteRevoked.status===200 && (await result('clientA','/reports/'+releaseVersion)).status===404);
 
+  // A legacy non-COFRE case has direct draft privileges. It must not fabricate Lite provenance.
+  const genericCase=randomUUID(), genericReport=randomUUID(), forgedVersion=randomUUID();
+  await sql(`insert into capital_web3.advisory_cases(id,client_safe_title,created_by) values('${genericCase}','Synthetic legacy','${users.ana.id}');
+    insert into capital_web3.advisory_case_staff(case_id,user_id,staff_role) values('${genericCase}','${users.ana.id}','analyst'),('${genericCase}','${users.rui.id}','reviewer'),('${genericCase}','${users.rui.id}','publisher');
+    insert into capital_web3.advisory_case_clients(case_id,user_id) values('${genericCase}','${users.clientA.id}');
+    insert into capital_web3.advisory_reports(id,case_id,created_by) values('${genericReport}','${genericCase}','${users.ana.id}');`);
+  const forged=await fetch(status.API_URL+'/rest/v1/advisory_report_versions',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+    headers:{apikey:status.ANON_KEY,Authorization:'Bearer '+users.ana.token,'Content-Type':'application/json','Content-Profile':'capital_web3','Accept-Profile':'capital_web3','Prefer':'return=representation'},
+    body:JSON.stringify({id:forgedVersion,report_id:genericReport,case_id:genericCase,version_number:1,content:{report_kind:'cofre_lite',status:'requires_review',summary:'synthetic forged'},created_by:users.ana.id})});
+  pass('Legacy case cannot forge a Lite report without server provenance',[400,401,403,409].includes(forged.status));
+
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
   pass('COFRE new case starts without an invented intake', blank.status === 200 && blank.body.data === null);
