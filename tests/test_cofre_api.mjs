@@ -311,3 +311,33 @@ test('Lite 0.2 saves full closed enum intake through scoped RPC; missing and inj
     assert.equal(res.status,400); assert.equal(h.calls.length,before+1); assert.ok(!(await res.text()).includes('secret-marker'));
   }
 });
+
+test('Lite report accepts only a saved revision and idempotency key, never client report content', async () => {
+  const path=`/cofre/cases/${CASE}/lite-report`, body={expected_revision:1,idempotency_key:KEY};
+  const result={case_id:CASE,intake_revision:1,report_version_id:VERSION};
+  const h=setup({data:result});
+  assert.equal((await h.handler(request(path,{method:'POST',body,authenticated:false}))).status,401);
+  assert.equal(h.calls.length,0);
+  const response=await h.handler(request(path,{method:'POST',body}));
+  assert.equal(response.status,200); assert.deepEqual((await response.json()).data,result);
+  assert.equal(h.calls.at(-1).url,BASE+'/rest/v1/rpc/advisory_lite_create_draft');
+  assert.deepEqual(JSON.parse(h.calls.at(-1).init.body),{p_case_id:CASE,p_expected_revision:1,p_idempotency_key:KEY});
+  for (const invalid of [{...body,content:{status:'approved'}},{...body,report_version_id:VERSION},
+    {...body,expected_revision:0},{...body,expected_revision:1.5},{...body,expected_revision:10001},
+    {...body,idempotency_key:'invalid'},{idempotency_key:KEY}]) {
+    const before=h.calls.length, denied=await h.handler(request(path,{method:'POST',body:invalid}));
+    assert.equal(denied.status,400); assert.equal(h.calls.length,before+1);
+  }
+  const invalidCase=await h.handler(request('/cofre/cases/nope/lite-report',{method:'POST',body}));
+  assert.equal(invalidCase.status,400);
+});
+
+test('Lite report hides database denial and maps conflict and quota without leaking details', async () => {
+  const path=`/cofre/cases/${CASE}/lite-report`, body={expected_revision:1,idempotency_key:KEY};
+  for (const [code,dbStatus,status] of [['42501',403,404],['23514',400,409],['23505',409,409],['54000',400,429]]) {
+    const h=setup({data:{code,message:'sensitive-marker'},dbStatus});
+    const response=await h.handler(request(path,{method:'POST',body}));
+    assert.equal(response.status,status); const text=await response.text();
+    assert.ok(!text.includes('sensitive-marker')); assert.ok(!text.includes(TOKEN));
+  }
+});

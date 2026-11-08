@@ -213,6 +213,18 @@ select pg_sleep(4); commit;`);
   const rival02=fresh(second02);rival02.idempotency_key=randomUUID();rival02.intake.controls.backup='yes';
   const race02=await Promise.all([result('ana',v02Path,second02),result('ana',v02Path,rival02)]);
   pass('Lite 0.2 simultaneous edits have one conflict',race02.map(r=>r.status).sort().join(',')==='200,409');
+  const liteReportPath='/cofre/cases/'+caseId+'/lite-report';
+  const reportRequest={expected_revision:2,idempotency_key:randomUUID()};
+  pass('Lite report endpoint rejects client and foreign analyst',
+    (await result('clientA',liteReportPath,reportRequest)).status===404 && (await result('authorB',liteReportPath,reportRequest)).status===404);
+  pass('Lite report endpoint rejects forged content',
+    (await result('ana',liteReportPath,{...reportRequest,content:{status:'approved'}})).status===400);
+  const reportRetry=await Promise.all([result('ana',liteReportPath,reportRequest),result('ana',liteReportPath,reportRequest)]);
+  const liteReportVersion=reportRetry[0].body.data?.report_version_id;
+  pass('Lite report endpoint retries return one server-generated version',
+    reportRetry.every(r=>r.status===200 && r.body.data.intake_revision===2 && r.body.data.report_version_id===liteReportVersion) && UUID.test(liteReportVersion));
+  pass('Lite report endpoint rejects stale revision',
+    (await result('ana',liteReportPath,{expected_revision:1,idempotency_key:randomUUID()})).status===409);
   // An old tab and an explicit migration cannot commit conflicting sources.
   const otherCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
   const migrationCase=otherCreated.body.data?.case_id;
@@ -389,3 +401,4 @@ select pg_sleep(4); commit;`);
     [401, 403].includes(oldDirect.status) || oldDirect.status === 200 && oldDirect.body.length === 0);
   return { workspaceA, workspaceB, caseId, versionId, newerVersion, publicationId };
 }
+
