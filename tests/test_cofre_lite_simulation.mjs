@@ -64,16 +64,16 @@ test('browser signal module matches the Edge-local source', async () => {
   assert.equal(browser, edge);
 });
 
-test('consented case signals save and resume on a fresh session without persisting other answers', async () => {
+test('consented Lite intake saves every control and resumes on a fresh session', async () => {
   let stored = null, requests = [];
   const api = async (path, body) => { requests.push({path,body}); if (!body) return {data:stored}; stored = {revision:(stored?.revision || 0)+1,intake:body.intake}; return {data:{revision:stored.revision}}; };
   const options = {api, cases:()=>[{id:'case-1',client_safe_title:'Fictício'}], confirm:()=>true};
   const root = new Element('section'), ui = new LiteSimulation(root,options); ui.caseId='case-1'; await ui.load();
   ui.answers.urgency='yes'; ui.answers.experience='beginner'; ui.consents.assessment=true; ui.consents.storage=true; ui.dirty=true;
   await ui.save(); assert.equal(stored.revision,1); assert.equal(stored.intake.signals.urgency,'yes');
-  assert.equal('experience' in stored.intake,false); assert.equal(ui.dirty,true);
+  assert.equal(stored.intake.profile.experience,'beginner'); assert.equal(stored.intake.controls.backup,'unknown'); assert.equal(ui.dirty,false);
   ui.clear(); const next = new LiteSimulation(new Element('section'),options); next.caseId='case-1'; await next.load();
-  assert.equal(next.answers.urgency,'yes'); assert.equal(next.answers.experience,undefined); assert.equal(next.revision,1);
+  assert.equal(next.answers.urgency,'yes'); assert.equal(next.answers.experience,'beginner'); assert.equal(next.answers.backup,'unknown'); assert.equal(next.revision,1);
   assert.equal(requests.filter(r=>r.body).length,1);
 });
 
@@ -109,4 +109,39 @@ test('uncertain Lite save keeps local answers and retries identical payload and 
   ui.caseId='case-1';ui.loaded=true;ui.consents={assessment:true,storage:true};ui.answers.urgency='yes';ui.dirty=true;
   await ui.save();assert.equal(ui.answers.urgency,'yes');assert.equal(ui.dirty,true);assert.match(ui.notice,/Não foi possível confirmar/);
   await ui.save();assert.equal(ui.revision,1);assert.equal(ui.dirty,false);assert.deepEqual(calls[0],calls[1]);
+});
+
+
+test('unanswered controls are stored as unknown and not applicable is preserved', async () => {
+  let stored; const api=async(path,body)=>{stored=structuredClone(body);return {data:{revision:1}};};
+  const ui=new LiteSimulation(new Element('section'),{api,cases:()=>[{id:'case-1'}],confirm:()=>true});
+  ui.caseId='case-1';ui.loaded=true;ui.consents={assessment:true,storage:true};
+  ui.answers.vault='not_applicable';ui.answers.secret_exposure='no';ui.dirty=true;await ui.save();
+  assert.equal(stored.intake.schema_version,'cofre-lite-intake-0.2');assert.equal(stored.legacy_revision,null);
+  assert.equal(stored.intake.controls.vault,'not_applicable');assert.equal(stored.intake.controls.apps,'unknown');
+  assert.equal(stored.intake.profile.experience,'unknown');assert.equal(stored.intake.signals.urgency,'unknown');
+  assert.ok(!('address' in stored.intake));assert.equal(ui.dirty,false);
+});
+
+test('invalid server intake never replaces existing answers', async () => {
+  const api=async()=>({data:{revision:1,intake:{schema_version:'cofre-lite-intake-0.2',synthetic:true}}});
+  const ui=new LiteSimulation(new Element('section'),{api,cases:()=>[{id:'case-1'}],confirm:()=>true});
+  ui.caseId='case-1';ui.answers.backup='yes';ui.dirty=true;await ui.load();
+  assert.equal(ui.answers.backup,'yes');assert.equal(ui.dirty,true);assert.equal(ui.loaded,false);
+});
+
+test('legacy signals require explicit import and renewed consent; no data is lost silently', async () => {
+  const { SIGNAL_IDS } = await import('../apps/staging/cofre-lite-signals.mjs');
+  const signals = Object.fromEntries(SIGNAL_IDS.map(id => [id, id === 'urgency' ? 'yes' : 'unknown']));
+  const requests=[]; const api=async(path,body)=>{requests.push({path,body});if(path.endsWith('/lite-intake'))return {data:{legacy_available:true,legacy_revision:1}};
+    return {data:{revision:1,intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals}}};};
+  const root=new Element('section'), ui=new LiteSimulation(root,{api,cases:()=>[{id:'case-1'}],confirm:()=>true});ui.caseId='case-1';await ui.load();
+  assert.equal(ui.legacyAvailable,true);assert.equal(ui.loaded,false);assert.equal(requests.length,1);
+  assert.ok(find(root,'button','Carregar sinais anteriores'));assert.ok(find(root,'button','Iniciar sem sinais anteriores'));
+  await ui.importLegacy();assert.equal(ui.answers.urgency,'yes');assert.equal(ui.dirty,true);assert.equal(ui.loaded,true);
+  assert.deepEqual(ui.consents,{assessment:false,storage:false});assert.equal(ui.intake().profile.experience,'unknown');
+  await ui.save();assert.equal(requests.length,2);assert.match(ui.notice,/consentimentos/);
+  ui.consents={assessment:true,storage:true}; const saved=[];ui.api=async(path,body)=>{saved.push(body);return {data:{revision:saved.length}};};
+  await ui.save();assert.equal(saved[0].legacy_revision,1);assert.equal(ui.legacyRevision,null);
+  ui.answers.urgency='no';await ui.save();assert.equal(saved[1].legacy_revision,null);
 });
