@@ -10,7 +10,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
   if (status.API_URL !== 'http://127.0.0.1:54321') throw new Error('COFRE browser requires disposable local stack');
   const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
     '/app.mjs': ['app.mjs', 'text/javascript'], '/client.mjs': ['client.mjs', 'text/javascript'],
-    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
+    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/cofre-lite-simulation.mjs': ['cofre-lite-simulation.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
     '/auth-controls.mjs': ['auth-controls.mjs','text/javascript'], '/auth-controls-ui.mjs': ['auth-controls-ui.mjs','text/javascript'] };
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -60,6 +60,15 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     }
     gate = 'analyst login and create case';
     const analyst = await login('ana');
+    gate = 'synthetic Lite learning exercise';
+    await analyst.locator('#lite-tab').click();
+    expect((await analyst.locator('#lite-panel').innerText()).includes('sem vínculo com atendimento'), 'Lite clearly describes session-only exercise');
+    await analyst.locator('#lite-panel input[name="lite-experience"][value="beginner"]').check();
+    await analyst.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
+    await analyst.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
+    await analyst.locator('#lite-panel input[name="lite-secret_exposure"][value="yes"]').check();
+    expect((await analyst.locator('#lite-panel [role="status"]').innerText()).includes('Alerta crítico'), 'Lite immediately warns about declared secret exposure');
+    expect(await analyst.locator('#lite-panel input:not([type="radio"]), #lite-panel textarea').count() === 0, 'Lite requests no free-text secrets or addresses');
     await analyst.locator('#cases-tab').click();
     await analyst.locator('#cofre-workspace-select').selectOption(workspaceA);
     await analyst.locator('#cofre-recipient').selectOption(users.clientA.id);
@@ -199,6 +208,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
       await analyst.locator('#cofre-objective').inputValue() === 'organize',
       'canceling logout retains the active session and unsaved answer');
     gate = 'confirmed logout clears workflow and questionnaire state';
+    analyst.once('dialog', dialog => dialog.accept());
     analyst.once('dialog', dialog => dialog.accept());
     await analyst.locator('#logout').click();
     await analyst.locator('#login-panel').waitFor({ state: 'visible' });
