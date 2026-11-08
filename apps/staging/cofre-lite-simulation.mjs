@@ -178,7 +178,7 @@ export class LiteSimulation {
     updateAlert(); this.root.append(result);
     if (this.api) {
       const group = node('section'); group.className = 'boundary'; const title = node('h3', 'Respostas no atendimento');
-      const hint = node('p', 'Selecione um atendimento atribuído. O servidor verificará seu acesso e a disponibilidade ao carregar. As respostas desta jornada poderão ser salvas após os consentimentos.');
+      const hint = node('p', 'Selecione um atendimento atribuído. O servidor verificará seu acesso e a disponibilidade ao carregar. Salvar uma nova revisão suspende entregas Lite anteriores deste atendimento; depois será necessário gerar, revisar e publicar uma nova versão.');
       const label = node('label', 'Atendimento fictício'), picker = node('select'); label.htmlFor = 'lite-case'; picker.id = 'lite-case'; picker.disabled = this.pending;
       const blank = node('option', 'Escolha um atendimento'); blank.value = ''; picker.append(blank);
       for (const item of this.cases()) { const option = node('option', item.client_safe_title || 'Atendimento fictício'); option.value = item.id; picker.append(option); }
