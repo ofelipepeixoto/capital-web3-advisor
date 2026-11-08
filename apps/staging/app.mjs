@@ -3,12 +3,15 @@ import { CofreWorkspace, renderCofreReport, renderPublicationContext } from './c
 import { createAuthControls, consumeAuthFragment } from './auth-controls.mjs';
 import { AuthControlsUI } from './auth-controls-ui.mjs';
 import { LiteSimulation } from './cofre-lite-simulation.mjs';
+import { JourneyExercise } from './journey-exercise.mjs';
 
 const $ = id => document.getElementById(id);
 let client, session, reports = [], publications = [], generation = 0, detailGeneration = 0;
 let busy = false;
 let roster = [], activeView = 'diagnostics', cofre, authUI;
+let partialCapability = false;
 const lite = new LiteSimulation($('lite-workspace'));
+const exercises = new JourneyExercise({root: $('journey-exercise'), api: (path, body) => client.api(path, body)});
 let accessLink = null, accessLinkError = false;
 // Remove Auth fragments before configuration requests or rendering any account data.
 try { accessLink = consumeAuthFragment(location.href, url => history.replaceState(history.state, '', url)); }
@@ -44,7 +47,7 @@ function reportNavigation(panel, body) {
 }
 function clearWorkspace() {
   ++generation; ++detailGeneration; session = null; reports = []; publications = []; requestKeys.clear();
-  roster = []; activeView = 'diagnostics'; cofre?.clear(); lite.clear();
+  roster = []; activeView = 'diagnostics'; partialCapability = false; cofre?.clear(); lite.clear(); exercises.clear();
   authUI?.clear();
   $('workspace').hidden = true; $('login-panel').hidden = false; $('logout').hidden = true;
   $('identity').textContent = ''; $('reports').replaceChildren(); $('detail').replaceChildren();
@@ -72,8 +75,9 @@ async function refresh() {
   $('reports').replaceChildren(); reports = []; publications = [];
   const access = await client.api('/access-requirements');
   if (epoch !== generation || !session) return;
+  partialCapability = access.partial_intake_enabled === true;
   if (access.mfa_required && access.assurance_level !== 'aal2') {
-    $('workspace').hidden = true; $('login-panel').hidden = true;
+    $('workspace').hidden = true; $('login-panel').hidden = true; exercises.clear();
     await authUI.startMfa(); return;
   }
   const [versions, deliveries, people, current] = await Promise.all([
@@ -85,9 +89,10 @@ async function refresh() {
   const staff = session.assignments.length > 0 || roster.length > 0;
   $('identity').textContent = staff ? 'Console da equipe · atendimentos fictícios e revisão por caso' : 'Portal do cliente · somente versões publicadas para você';
   $('workspace-nav').hidden = !staff;
-  if (staff) await cofre.load(roster); else { cofre.clear(); lite.clear(); activeView = 'diagnostics'; }
+  if (staff) await cofre.load(roster); else { cofre.clear(); lite.clear(); exercises.clear(); activeView = 'diagnostics'; }
   if (epoch !== generation || !session) return;
   showView(activeView);
+  if (staff && activeView === 'journeys' && !exercises.root.children.length) exercises.load();
   if (!reports.length) $('reports').append(element('p', staff
     ? 'Nenhum rascunho atribuído. Abra Atendimentos para preparar um COFRE Individual fictício.'
     : 'Nenhum diagnóstico foi publicado para você. A equipe precisa revisar e liberar uma versão para esta conta.'));
@@ -247,17 +252,17 @@ function showView(view, focus = false) {
   $('lite-tab').setAttribute('aria-current', view === 'lite' ? 'page' : 'false');
   if (focus) $({journeys:'journeys-heading',cases:'cases-heading',lite:'lite-heading',diagnostics:'reports-heading'}[view]).focus();
 }
-cofre = new CofreWorkspace({ root: $('cofre-workspace'), api: (path, body) => client.api(path, body),
+cofre = new CofreWorkspace({ root: $('cofre-workspace'), partialEnabled: () => partialCapability, api: (path, body) => client.api(path, body),
   currentSession: () => session, notice: message,
   onCreated: async () => { const epoch = generation, current = await client.api('/session'); if (epoch === generation && session && current.user_id === session.user_id) session = current; },
   onSaved: async reportId => { await refresh(); if (!session) return; showView('diagnostics'); const report = reports.find(row => row.id === reportId); if (report) await openReport(report); },
 });
-$('journeys-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('journeys', true); });
+$('journeys-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { showView('journeys', true); if (!exercises.root.children.length) exercises.load(); } });
 $('open-cofre').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.root.children.length) lite.render(); showView('lite', true); } });
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
-window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty || exercises.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
 
 async function continueAccess(current) {
   if (!Array.isArray(current.assignments) || typeof current.user_id !== 'string') throw new Error('Sessão inválida.');
@@ -284,7 +289,8 @@ $('login-form').addEventListener('submit', async event => {
   finally { busy = false; $('login').disabled = false; $('login').textContent = 'Entrar'; }
 });
 $('logout').addEventListener('click', async () => {
-  if ((cofre?.dirty || lite.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
+  if (cofre?.pending) { message('Aguarde o resultado da operação atual antes de sair. Se a conexão falhar, confira o atendimento salvo antes de repetir.'); return; }
+  if ((cofre?.dirty || lite.dirty || exercises.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }
   catch { message('Acesso local encerrado. O servidor não confirmou a saída; tente novamente ao recuperar a conexão.'); }
 });
