@@ -310,11 +310,13 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await reviewer.locator('input[id^="reason-"]').fill('Synthetic Lite revocation');
     await reviewer.getByRole('button',{name:'Revogar esta entrega',exact:true}).click();
     await reviewer.getByText(/Entrega revogada\./).waitFor();
+    await reviewer.locator('#detail').getByText(liteNew.report_version_id,{exact:false}).waitFor();
     await client.getByRole('button',{name:'Salvar / imprimir PDF',exact:true}).click();
     await client.getByRole('heading',{name:'Confira o acesso novamente',exact:true}).waitFor();
     expect(await client.evaluate(() => window.__litePrintCalls) === 1 && await client.locator('#detail .cofre-report').count() === 0, 'revoked Lite delivery cannot be printed and is removed from the screen');
     await client.locator('#refresh').click();
     await reviewer.locator('[data-version="' + saved.report_version_id + '"]').click();
+    await reviewer.locator('#detail').getByText(saved.report_version_id,{exact:false}).waitFor();
     expect(await client.locator('#workspace-nav').isHidden(), 'client does not see staff journey navigation');
     await client.locator('[data-version="' + saved.report_version_id + '"]').click();
     await client.locator('#detail .cofre-report').waitFor();
