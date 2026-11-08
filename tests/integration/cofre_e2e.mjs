@@ -146,14 +146,35 @@ select set_config('request.jwt.claims','${JSON.stringify({sub:users.ana.id,role:
 select capital_web3.advisory_lite_signals_save('${caseId}','${JSON.stringify(liteDraft)}'::jsonb,2,'${randomUUID()}');
 reset role;
 \\echo LITE_LOCK_READY
-select pg_sleep(4); commit;`);
+select pg_sleep(8); commit;`);
   try {
     await ready;
     const toggle = spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,
       input:`begin; set local lock_timeout='500ms'; update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'; commit;`});
     pass('Lite disable cannot commit before an in-flight write completes',toggle.status!==0 && /lock timeout/i.test(toggle.stderr));
+    for (const [name, statement] of [
+      ['membership', `update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst'`],
+      ['assignment', `update capital_web3.advisory_case_staff set active=false where case_id='${caseId}' and user_id='${users.ana.id}' and staff_role='analyst'`],
+      ['session', `delete from auth.sessions where id='${claims.session_id}'`],
+    ]) {
+      const revoke=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,
+        input:`begin; set local lock_timeout='500ms'; ${statement}; commit;`});
+      pass(`Lite ${name} revocation cannot commit before in-flight write`,revoke.status!==0 && /lock timeout/i.test(revoke.stderr));
+    }
     requireCondition(await finished === 0, 'Lite lock holder commits');
   } finally { if (holder.exitCode === null) holder.kill(); }
+  // A smaller operator capacity blocks only new receipts; safe replay succeeds.
+  await sql(`update capital_web3_private.cofre_lite_receipt_policy set max_receipts_per_actor=1, minimum_retention_days=30 where singleton=true;`);
+  const quotaReplay=await result('ana',litePath,liteSave);
+  const quotaNew=await result('ana',litePath,{...liteSave,expected_revision:3,idempotency_key:randomUUID()});
+  pass('Lite capacity preserves same-key replay and rejects new writes',quotaReplay.status===200 && quotaReplay.body.data.revision===1 && quotaNew.status===429);
+  await sql(`update capital_web3_private.cofre_lite_receipt_policy set max_receipts_per_actor=128, minimum_retention_days=30 where singleton=true;`);
+  const retentionKey=randomUUID();
+  const retentionWrite=await result('ana',litePath,{...liteSave,expected_revision:3,idempotency_key:retentionKey});
+  pass('Lite configured retention records a new receipt',retentionWrite.status===200 && retentionWrite.body.data.revision===4);
+  const retentionQuery=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,
+    input:`select (retain_until-created_at >= interval '30 days')::text from capital_web3_private.cofre_lite_signal_receipts where actor='${users.ana.id}' and key='${retentionKey}';`});
+  pass('Lite minimum retention is recorded without a cleanup job',retentionQuery.status===0 && retentionQuery.stdout.trim()==='true');
   await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
   pass('Lite confirmed disable denies new direct reads', (await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId})).status===403);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
@@ -170,7 +191,7 @@ select pg_sleep(4); commit;`);
   caseHolder.stdin.write(`begin; select id from capital_web3.advisory_cases where id='${caseId}' for update;\n\\echo CASE_LOCK_READY\n`);
   try {
     await caseReady;
-    const waitingSave={intake:liteDraft,expected_revision:3,idempotency_key:randomUUID()};
+    const waitingSave={intake:liteDraft,expected_revision:4,idempotency_key:randomUUID()};
     const delayed = result('ana',litePath,waitingSave);
     let waiting=false;
     for (let n=0;n<40 && !waiting;n++) {
@@ -187,7 +208,9 @@ select pg_sleep(4); commit;`);
     pass('Lite rechecks analyst membership after waiting for the case lock',(await delayed).status===404);
   } finally { if(caseHolder.exitCode===null)caseHolder.kill(); }
   await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst';`);
-
+  await sql(`update capital_web3.advisory_case_staff set active=false where case_id='${caseId}' and user_id='${users.ana.id}' and staff_role='analyst';`);
+  pass('Lite denies a write started after assignment revocation', (await result('ana',litePath,{...liteSave,expected_revision:4,idempotency_key:randomUUID()})).status===404);
+  await sql(`update capital_web3.advisory_case_staff set active=true where case_id='${caseId}' and user_id='${users.ana.id}' and staff_role='analyst';`);
 
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
