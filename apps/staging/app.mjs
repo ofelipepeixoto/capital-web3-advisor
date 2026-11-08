@@ -1,5 +1,5 @@
 import { PortalClient, validateConfig } from './client.mjs';
-import { CofreWorkspace, renderCofreReport, renderPublicationContext } from './cofre-ui.mjs';
+import { CofreWorkspace, renderCofreReport, renderLiteReport, renderPublicationContext } from './cofre-ui.mjs';
 import { createAuthControls, consumeAuthFragment } from './auth-controls.mjs';
 import { AuthControlsUI } from './auth-controls-ui.mjs';
 import { LiteSimulation } from './cofre-lite-simulation.mjs';
@@ -110,6 +110,7 @@ async function refresh() {
 }
 function facts(content, staff) {
   if (content.report_kind === 'cofre_individual') return renderCofreReport(content, { staff });
+  if (content.report_kind === 'cofre_lite') return renderLiteReport(content);
   const box = element('section');
   box.append(element('h3', 'Contexto da análise'));
   box.append(element('p', typeof content.summary === 'string' ? content.summary : 'Confira o conteúdo e as limitações registrados no documento.'));
@@ -177,7 +178,7 @@ async function openReport(report) {
       window.print();
     } catch (error) { if (epoch === generation && readGeneration === detailGeneration) panel.replaceChildren(element('h2', 'Confira o acesso novamente'), element('p', error.message)); throw error; }
   }, 'primary'));
-  if (staff) actions.append(button('Baixar JSON técnico', async () => {
+  if (staff && content.report_kind !== 'cofre_lite') actions.append(button('Baixar JSON técnico', async () => {
     const value = await client.api(base + '/download');
     if (epoch !== generation || readGeneration !== detailGeneration) return;
     const url = URL.createObjectURL(new Blob([JSON.stringify(value.data, null, 2)], { type: 'application/json' }));
@@ -206,7 +207,8 @@ async function openReport(report) {
   acknowledgement.append(observed, document.createTextNode('Li o documento completo e conferi esta versão.')); review.append(acknowledgement);
   const insist = () => { if (!observed.checked) throw new Error('Confirme a leitura desta versão antes de continuar.'); };
   const controls = element('div', '', 'actions');
-  if (!reviewState && !hasAssets && staffRoles.some(r => ['reviewer', 'admin'].includes(r))) {
+  if (content.report_kind === 'cofre_lite' && content.status !== 'requires_review') review.append(element('p', 'Esta versão precisa estar completa e sem alerta crítico antes da revisão. Confira o atendimento.'));
+  if (!reviewState && !hasAssets && (content.report_kind !== 'cofre_lite' || content.status === 'requires_review') && staffRoles.some(r => ['reviewer', 'admin'].includes(r))) {
     for (const [decision, label] of [['approved', 'Aprovar esta versão'], ['rejected', 'Rejeitar esta versão']]) {
       controls.append(button(label, async () => { insist(); await mutate(base + '/review', {
         decision, ...digestFields(pkg), private_notes: '',
@@ -214,7 +216,8 @@ async function openReport(report) {
     }
   }
   review.append(controls);
-  if (reviewState === 'approved' && !hasAssets && staffRoles.some(r => ['publisher', 'admin'].includes(r))) {
+  if (content.report_kind === 'cofre_lite') review.append(element('p', 'A entrega do COFRE Lite está em validação e ainda não está disponível neste portal.'));
+  if (content.report_kind !== 'cofre_lite' && reviewState === 'approved' && !hasAssets && staffRoles.some(r => ['publisher', 'admin'].includes(r))) {
     review.append(element('h3', 'Publicar para destinatários'));
     const selected = [];
     for (const recipient of recipients) {
