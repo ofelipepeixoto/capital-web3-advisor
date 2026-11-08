@@ -170,6 +170,16 @@ select pg_temp.require((select content->>'status'='incomplete' and content->'sco
 insert into cofre_test_data values('lite_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_draft')->>'report_version_id')::uuid));
 select pg_temp.expect_error($q$select capital_web3.advisory_review_report((pg_temp.data('lite_draft')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_package')->>'content_sha256',pg_temp.data('lite_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000203')$q$,'42501','Lite author cannot approve own version');
 select pg_temp.expect_error($q$select * from capital_web3_private.cofre_lite_report_snapshots$q$,'42501','Lite snapshot is private');
+reset role;
+select pg_temp.expect_error($q$update capital_web3.advisory_report_versions set content='{}'::jsonb where id=(pg_temp.data('lite_draft')->>'report_version_id')::uuid$q$,'23514','Lite draft cannot be altered even before review');
+update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='83000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,1,'73000000-0000-0000-0000-000000000201')$q$,'42501','Lite draft RPC denies direct replay when feature is off');
+reset role;
+update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='83000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,1,'73000000-0000-0000-0000-000000000204')$q$,'42501','client cannot create Lite draft');
 select pg_temp.require((select count(*)=0 from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_draft')->>'report_version_id')::uuid),'client cannot see unpublished Lite draft');
