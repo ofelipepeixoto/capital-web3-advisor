@@ -192,7 +192,7 @@ select pg_temp.expect_error($q$select capital_web3.advisory_review_report_unguar
 select pg_temp.expect_error($q$select capital_web3.advisory_publish_report_unguarded(null,null,null,null,null,null)$q$,'42501','Lite publication bypass is inaccessible');
 insert into cofre_test_data values('lite_complete', jsonb_set(jsonb_set(jsonb_set(pg_temp.data('lite_v02'),'{profile,experience}','"beginner"'),'{controls}',
  (select jsonb_object_agg(key,case when key='secret_exposure' then 'no' else 'yes' end) from jsonb_each(pg_temp.data('lite_v02')->'controls'))),'{signals}',
- (select jsonb_object_agg(key,'no') from jsonb_each(pg_temp.data('lite_v02')->'signals'))));
+ (select jsonb_object_agg(key,'no'::text) from jsonb_each(pg_temp.data('lite_v02')->'signals'))));
 select capital_web3.advisory_lite_intake_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite_complete'),1,'73000000-0000-0000-0000-000000000210',null);
 insert into cofre_test_data values('lite_ready',capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,2,'73000000-0000-0000-0000-000000000211'));
 insert into cofre_test_data values('lite_ready_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_ready')->>'report_version_id')::uuid));
