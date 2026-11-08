@@ -161,7 +161,7 @@ begin
  select s.case_id into cid from capital_web3_private.cofre_lite_report_snapshots s where s.report_version_id=p_version;
  if cid is null then
   if exists(select 1 from capital_web3.advisory_report_versions v where v.id=p_version and v.content->>'report_kind'='cofre_lite') then
-   raise exception 'Lite report lacks a canonical snapshot' using errcode='23514';
+   raise exception 'report unavailable' using errcode='42501';
   end if;
   return;
  end if;
