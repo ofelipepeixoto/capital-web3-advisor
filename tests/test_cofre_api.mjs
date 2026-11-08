@@ -183,3 +183,17 @@ test("stale revision or reused key conflict does not masquerade as successful sa
   assert.equal((await result.json()).error, "state_conflict");
   assert.equal(calls.length, 2);
 });
+
+test('partial intake accepts only consented closed synthetic records with honest gaps', async () => {
+  const partial = intake(); partial.profile.objective = ''; partial.profile.experience = ''; partial.inventory[0].category = '';
+  const body = { intake: partial, expected_revision: 0, base_revision: 0, idempotency_key: KEY };
+  const h = setup({ data: { revision: 1, base_revision: 0 } });
+  assert.equal((await h.handler(request(`/cofre/cases/${CASE}/partial`, {method: 'POST', body}))).status, 200);
+  const sent = JSON.parse(h.calls[1].init.body); assert.equal(sent.p_intake.profile.objective, '');
+  assert.equal(sent.p_intake.inventory[0].category, '');
+  for (const mutate of [b => { b.intake.seed='secret'; }, b => { b.intake.consents.storage=false; }, b => { b.base_revision=-1; }]) {
+    const changed=JSON.parse(JSON.stringify(body)); mutate(changed); const test=setup();
+    assert.equal((await test.handler(request(`/cofre/cases/${CASE}/partial`, {method:'POST',body:changed}))).status, 400);
+    assert.equal(test.calls.length, 1);
+  }
+});

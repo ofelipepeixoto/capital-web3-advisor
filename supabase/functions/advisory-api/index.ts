@@ -2,7 +2,7 @@
  * No service-role client, persona selector, AI approval or financial execution.
  * Native fetch avoids runtime packages and only reaches the operator's project URL.
  */
-import { validateCofreIntake, buildCofreReport } from './cofre.ts';
+import { validateCofreIntake, validatePartialCofreIntake, buildCofreReport } from './cofre.ts';
 type EnvReader = (name: string) => string | undefined;
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type JsonObject = Record<string, unknown>;
@@ -265,6 +265,21 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
           p_idempotency_key: assertUuid(body.idempotency_key),
         });
         return respond(200, { data, request_id: requestId });
+      }
+      const partialRoute = path.match(/^\/cofre\/cases\/([^/]+)\/partial$/);
+      if (partialRoute) {
+        const caseId = assertUuid(partialRoute[1]);
+        if (request.method === 'GET') return respond(200, { data: await rpc('advisory_cofre_partial_get', { p_case_id: caseId }), request_id: requestId });
+        if (request.method === 'POST') {
+          const body = await readBody(request);
+          exactKeys(body, ['intake', 'expected_revision', 'base_revision', 'idempotency_key']);
+          if (![body.expected_revision,body.base_revision].every(v => Number.isSafeInteger(v) && (v as number)>=0 && (v as number)<=10000)) throw new ApiError(400, 'invalid_request');
+          let intake;
+          try { intake = validatePartialCofreIntake(body.intake); } catch { throw new ApiError(400, 'invalid_cofre_intake'); }
+          const data = await rpc('advisory_cofre_partial_save', { p_case_id: caseId, p_intake: intake,
+            p_expected_revision: body.expected_revision, p_base_revision: body.base_revision, p_idempotency_key: assertUuid(body.idempotency_key) });
+          return respond(200, { data, request_id: requestId });
+        }
       }
       const intakeRoute = path.match(/^\/cofre\/cases\/([^/]+)\/intake$/);
       if (intakeRoute) {
