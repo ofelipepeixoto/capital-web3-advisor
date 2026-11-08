@@ -17,14 +17,11 @@ declare
   asof_time timestamptz;
 begin
   perform capital_web3_private.validate_cofre_intake(v);
-  if asof is null or asof !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' then
+  if asof is null or asof !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$' then
     raise exception 'invalid timestamp' using errcode='22023';
   end if;
   begin asof_time:=asof::timestamptz;
   exception when others then raise exception 'invalid timestamp' using errcode='22023'; end;
-  if asof_time < now() - interval '10 minutes' or asof_time > now() + interval '2 minutes' then
-    raise exception 'timestamp outside accepted window' using errcode='22023';
-  end if;
   foreach id in array ids loop
     rule:=rules->id; resp:=v->'controls'->id; answer:=resp->>'answer'; ev:=resp->>'evidence';
     if answer <> 'unknown' then count_provided:=count_provided+1; end if;
@@ -123,6 +120,9 @@ begin
  if found then
  if prior.request<>req then raise exception 'key conflict' using errcode='23505'; end if;
  return prior.result; end if;
+ -- Retries reuse the confirmed receipt even after the window; new writes require freshness.
+ if (p_content->>'as_of')::timestamptz < now() - interval '10 minutes' or (p_content->>'as_of')::timestamptz > now() + interval '2 minutes' then
+  raise exception 'timestamp outside accepted window' using errcode='22023'; end if;
  select coalesce(max(revision),0) into rev from capital_web3.cofre_intakes where case_id=p_case_id;
  if rev<>p_expected_revision then raise exception 'intake changed; reload current version' using errcode='23514'; end if;
  select id into rid from capital_web3.advisory_reports where case_id=p_case_id order by created_at limit 1;

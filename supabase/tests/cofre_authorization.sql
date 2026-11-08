@@ -129,6 +129,13 @@ insert into cofre_test_data values('saved',capital_web3.advisory_save_cofre_inta
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000006'));
 select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000006')=pg_temp.data('saved'),'intake retry returns original version');
+-- An old timestamp on an idempotent retry returns the original result; altered content still fails.
+select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
+ pg_temp.data('intake'), jsonb_set(jsonb_set(jsonb_set(pg_temp.data('content'),'{as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,0,as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,1,as_of}','"2000-01-01T00:00:00.000Z"'),0,'73000000-0000-0000-0000-000000000006')=pg_temp.data('saved'),
+ 'confirmed idempotent retry survives freshness window');
+select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
+ pg_temp.data('intake'),jsonb_set(pg_temp.data('content'),'{summary}','"malicious retry"'),0,'73000000-0000-0000-0000-000000000006')$q$,
+ '22023','changed report text denied even on idempotent retry');
 select pg_temp.require((select count(*)=1 from capital_web3.cofre_intakes where case_id=(pg_temp.data('case')->>'case_id')::uuid),'assigned analyst can read intake');
 select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000007')$q$,'23514','stale revision cannot overwrite newer intake');
