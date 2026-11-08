@@ -240,6 +240,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await reviewer.locator('#expires').fill('2099-01-01T12:00');
     await reviewer.getByRole('button',{name:'Publicar diagnóstico',exact:true}).click();
     await reviewer.getByText('Diagnóstico publicado para os destinatários selecionados.',{exact:true}).waitFor();
+    await reviewer.getByRole('button',{name:'Revogar esta entrega',exact:true}).waitFor();
     await reviewer.locator('[data-version="' + saved.report_version_id + '"]').click();
     await reviewer.getByRole('button', { name: 'Aprovar esta versão', exact: true }).waitFor();
     await reviewer.getByRole('button', { name: 'Aprovar esta versão', exact: true }).click();
@@ -301,6 +302,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await reviewer.locator('#expires').fill('2099-01-01T12:00');
     await reviewer.getByRole('button',{name:'Publicar diagnóstico',exact:true}).click();
     await reviewer.getByText('Diagnóstico publicado para os destinatários selecionados.',{exact:true}).waitFor();
+    await reviewer.getByRole('button',{name:'Revogar esta entrega',exact:true}).waitFor();
     await client.locator('#refresh').click();
     await client.locator('[data-version="' + liteNew.report_version_id + '"]').click();
     await client.locator('#detail .cofre-report').waitFor();
