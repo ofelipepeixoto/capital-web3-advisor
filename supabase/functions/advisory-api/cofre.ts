@@ -89,6 +89,20 @@ export function validateCofreIntake(value: unknown): CofreIntake {
     controls: cleanControls, inventory };
 }
 
+/** Validate incomplete categorical answers without filling stored gaps. Consent is mandatory. */
+export function validatePartialCofreIntake(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return invalid();
+  const raw = value as Record<string, any>;
+  // Only serialize JSON data received at this HTTP boundary. Strict validator checks all keys.
+  let candidate: any;
+  try { candidate = JSON.parse(JSON.stringify(value)); } catch { return invalid(); }
+  if (candidate?.profile?.objective === '') candidate.profile.objective = 'organize';
+  if (candidate?.profile?.experience === '') candidate.profile.experience = 'beginner';
+  if (Array.isArray(candidate?.inventory)) for (const item of candidate.inventory) if (item?.category === '') item.category = 'vault';
+  validateCofreIntake(candidate);
+  return raw;
+}
+
 const EVIDENCE_LABELS: Record<Evidence, string> = {
   declared: "Autodeclarado na simulação", observed: "Revisão humana declarada na simulação",
   unknown: "Sem resposta ou evidência informada",

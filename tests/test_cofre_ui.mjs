@@ -196,3 +196,27 @@ test('stage shortcuts revisit reached steps without losing data or skipping init
   assert.equal(button(h.root, '3. Horizonte e perdas').attributes['aria-current'], 'step');
   assert.equal(button(h.root, '4. Recuperação').disabled, true);
 });
+
+test('partial save can be resumed without creating a report or inventing answers', async () => {
+  let partial = null, writes = 0;
+  const api = async (path, body) => {
+    if (path === '/cases') return {data:[entry]};
+    if (path.endsWith('/intake')) return {data:null};
+    if (path.endsWith('/partial') && body) { writes++; partial={intake:JSON.parse(JSON.stringify(body.intake)),revision:1,base_revision:0,stale:false}; return {data:{revision:1,base_revision:0}}; }
+    if (path.endsWith('/partial')) return {data:partial}; throw Error('unexpected');
+  };
+  const h = harness(api); await h.ui.load(roster); await h.ui.open(entry);
+  for (const input of h.root.querySelectorAll('input')) { input.checked=true; input.handlers.change(); }
+  await button(h.root,'Continuar').click(); change(field(h.root,'cofre-objective'),'organize');
+  await button(h.root,'Salvar progresso').click(); assert.equal(writes,1); assert.equal(h.ui.dirty,false); assert.equal(h.saved.length,0);
+  h.ui.clear(); await h.ui.load(roster); await h.ui.open(entry);
+  assert.equal(h.ui.intake.profile.objective,'organize'); assert.equal(h.ui.intake.profile.experience,'');
+  assert.equal(h.ui.partialRevision,1); assert.equal(h.saved.length,0);
+});
+
+test('outdated partial remains untouched after a newer final version', async () => {
+  const stale={intake:valid(),revision:1,base_revision:0,stale:true};
+  const h=harness(async path => path==='/cases'?{data:[entry]}:path.endsWith('/partial')?{data:stale}:{data:{revision:1,intake:valid()}});
+  await h.ui.load(roster); await h.ui.open(entry); assert.equal(h.ui.stalePartial,true);
+  assert.equal(button(h.root,'Salvar progresso'),undefined); assert.ok(h.root.textContent.includes('conciliação'));
+});

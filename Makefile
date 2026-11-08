@@ -8,8 +8,8 @@ check: test
 	@if test -f tests/test_ui_session.cjs; then node tests/test_ui_session.cjs; fi
 	node tests/test_ui_context.cjs
 	@if test -f tests/test_api_staging.mjs; then node --test tests/test_api_staging.mjs; fi
-	node --test tests/test_staging_client.mjs tests/test_logout_guard.mjs
-	node --test tests/test_cofre.mjs tests/test_cofre_api.mjs tests/test_cofre_ui.mjs
+	node --test tests/test_staging_client.mjs tests/test_journey_navigation.mjs tests/test_logout_guard.mjs
+	node --test tests/test_cofre.mjs tests/test_cofre_api.mjs tests/test_cofre_ui.mjs tests/test_journeys.mjs tests/test_cofre_lite_rules.mjs tests/test_cofre_lite_simulation.mjs
 	node --test tests/test_auth_controls.mjs tests/test_auth_controls_ui.mjs
 demo:
 	$(PYTHON) -m capital_web3.server

@@ -121,6 +121,17 @@ insert into cofre_test_data values('case',capital_web3.advisory_create_cofre_cas
  '83000000-0000-0000-0000-000000000001','13000000-0000-0000-0000-000000000001','73000000-0000-0000-0000-000000000005'));
 select pg_temp.require(capital_web3.advisory_create_cofre_case('83000000-0000-0000-0000-000000000001',
  '13000000-0000-0000-0000-000000000001','73000000-0000-0000-0000-000000000005')=pg_temp.data('case'),'case creation retry returns original case');
+-- Reproduce current vulnerability in an isolated savepoint: an assigned analyst
+-- can inject fabricated summary via the directly exposed RPC. Undo all effects.
+savepoint forged_report_test;
+insert into cofre_test_data values('forged',capital_web3.advisory_save_cofre_intake(
+ (pg_temp.data('case')->>'case_id')::uuid, pg_temp.data('intake'),
+ pg_temp.data('content') || '{"summary":"forged synthetic summary"}'::jsonb,
+ 0,'73000000-0000-0000-0000-000000000089'));
+select pg_temp.require((select content->>'summary'='forged synthetic summary'
+ from capital_web3.advisory_report_versions where id=(pg_temp.data('forged')->>'report_version_id')::uuid),
+ 'baseline reproduces tampered content through exposed RPC');
+rollback to savepoint forged_report_test;
 insert into cofre_test_data values('saved',capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000006'));
 select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,

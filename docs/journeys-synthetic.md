@@ -1,0 +1,39 @@
+# Contrato preliminar das jornadas sintéticas
+
+Este módulo introduz um motor puro e testável que organiza campos fechados para
+quatro jornadas, sem modificar a aplicação publicada. Não é uma interface,
+endpoint, persistência, integração externa, relatório, nota ou aprovação. Ainda
+precisa de escopo, autenticação, autorização, política de dados, UX, testes e
+integração com serviço antes de seu uso em uma jornada hospedada.
+
+| Jornada | Etapas propostas | Referência dos requisitos |
+|---|---|---|
+| COFRE-6 Individual | Ameaças, funções de carteira, chaves e recuperação, higiene, evidências, continuidade | Framework COFRE-6, pp. 1–4 |
+| Investidor Avançado | Objetivos e liquidez, carteiras, ativos/passivos, fontes, permissões, riscos e plano | Auditoria dos anexos e contrato COFRE atual; detalhe para validar |
+| RASTRO | Mandato, universo, maturidade, stack, taxonomia, rituais, plano 90 dias | Framework RASTRO, pp. 89–93 |
+| Organização e DAO | Mandato, papéis, política, multisig/módulos, revisão, reconciliação | SOP board/DAO, pp. 3–10; COFRE-6 pp. 1–4 |
+
+Somente a estrutura genérica está aqui. Os anexos e planilhas não foram copiados
+para o repositório público. Cada etapa tem um estado fechado (`not_assessed`,
+`unknown`, `declared`, `human_reviewed`, `gap`, `not_applicable`) e evidência
+(`none`, `declared`, `human_reviewed`), sem texto livre. Uma declaração não é
+tratada como verificação. Não avaliado, desconhecido e não aplicável são
+contabilizados separadamente; uma lacuna não vira resposta positiva.
+
+O resumo resulta em `needs_input`, `has_gaps` ou `awaits_human_review` e não
+faz inferência de segurança. Uma etapa marcada não substitui evidência estruturada,
+não certifica adequação e não aprova relatório. Não se coleta chave privada,
+frase de recuperação, senha, OTP, endereço, saldo ou outra informação real. A
+opção `not_applicable` ainda exige a definição de política por etapa no produto;
+nenhum resultado pode ser publicado a partir deste resumo.
+
+A fórmula e a metodologia de score seguem não aprovadas; modelos divergentes dos
+anexos não são mesclados nem calculados aqui. Nenhuma integração de dados,
+monitoramento, movimentação, assinatura, autorização ou operação financeira é
+ativada. A expressão “human_reviewed” representa um atributo fornecido no teste,
+não comprova a existência de revisão nem concede privilégios. O serviço deve ser
+a fonte de identidade, evidências, revisão e autorização numa futura integração.
+
+Para verificar: `node --test tests/test_journeys.mjs` e `make check`. Os testes
+cobrem estados, lacunas, duplicação, isolamento de objetos e rejeição de campos
+extras; não comprovam comportamento hospedado, UX, políticas ou banco.

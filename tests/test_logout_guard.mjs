@@ -10,12 +10,12 @@ const end = app.indexOf("$('refresh').addEventListener", start);
 assert.ok(start >= 0 && end > start, 'logout and refresh handlers are present');
 const handlerSource = app.slice(start, end);
 
-async function exercise({ dirty, accept = false, fail = false }) {
+async function exercise({ dirty, liteDirty = false, accept = false, fail = false }) {
   let handler, prompts = [], logoutCalls = 0, sessionOpen = true, notice = '';
   const cofre = { dirty, answer: 'preservada' };
   const client = { logout: async () => { logoutCalls++; sessionOpen = false; if (fail) throw Error('offline'); } };
   const window = { confirm: text => { prompts.push(text); return accept; } };
-  runInNewContext(handlerSource, { $: () => ({ addEventListener: (_, cb) => { handler = cb; } }), cofre, client, window, message: value => { notice = value; } });
+  runInNewContext(handlerSource, { $: () => ({ addEventListener: (_, cb) => { handler = cb; } }), cofre, lite: { dirty: liteDirty }, client, window, message: value => { notice = value; } });
   await handler();
   return { prompts, logoutCalls, sessionOpen, answer: cofre.answer, notice };
 }
@@ -39,4 +39,9 @@ test('saída sem alteração não pede confirmação e comunica falha remota', a
   assert.equal(result.prompts.length, 0);
   assert.equal(result.logoutCalls, 1);
   assert.match(result.notice, /servidor não confirmou/);
+});
+
+test('exercício COFRE Lite não salvo também pede confirmação de saída', async () => {
+  const result = await exercise({ dirty: false, liteDirty: true });
+  assert.equal(result.prompts.length, 1); assert.equal(result.logoutCalls, 0);
 });
