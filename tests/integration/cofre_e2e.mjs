@@ -307,22 +307,52 @@ select pg_sleep(4); commit;`);
   pass('Lite delivery is visible only to intended recipient',
     (await result('clientA','/reports/'+releaseVersion)).status===200 &&
     (await result('clientB','/reports/'+releaseVersion)).status===404);
+  const clientClaims=JSON.parse(Buffer.from(users.clientA.token.split('.')[1],'base64url').toString('utf8'));
+  requireCondition(UUID.test(clientClaims.session_id),'Lite client session is valid');
+  const clientJwt=JSON.stringify({sub:users.clientA.id,role:'authenticated',session_id:clientClaims.session_id,aal:'aal1',is_anonymous:false});
+  pass('Lite unguarded receipt RPC is not directly callable',
+    [401,403,404].includes((await local('clientA','/rest/v1/rpc/advisory_record_receipt_unguarded',{p_publication_id:litePublicationId})).status));
+  const receiptHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${clientJwt}',true);
+    select capital_web3.advisory_record_receipt('${litePublicationId}'); reset role;`, 'RECEIPT_HELD');
+  try {
+    for (const [label,statement] of [
+      ['case',`update capital_web3.advisory_cases set client_safe_title=client_safe_title where id='${releaseCase}'`],
+      ['feature',`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'`],
+      ['client membership',`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client'`],
+      ['client assignment',`update capital_web3.advisory_case_clients set active=false where case_id='${releaseCase}' and user_id='${users.clientA.id}'`],
+      ['client session',`delete from auth.sessions where id='${clientClaims.session_id}'`],
+      ['publication',`delete from capital_web3.advisory_publications where id='${litePublicationId}'`],
+    ]) {
+      const attempt=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,input:`begin; set local lock_timeout='350ms'; ${statement}; commit;`});
+      pass('Lite receipt serializes '+label,attempt.status!==0 && /lock timeout/i.test(attempt.stderr));
+    }
+    receiptHolder.proc.stdin.end('commit;\n'); requireCondition(await receiptHolder.done===0,'Lite receipt transaction commits');
+  } finally {if(receiptHolder.proc.exitCode===null)receiptHolder.proc.kill();}
   // Update starts before review and holds the case; the waiting old review must fail after commit.
   const anaJwt=JSON.stringify({sub:users.ana.id,role:'authenticated',session_id:claims.session_id,aal:'aal1',is_anonymous:false});
   const updateHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${anaJwt}',true);
     select capital_web3.advisory_lite_intake_save('${releaseCase}','${JSON.stringify(releaseIntake)}'::jsonb,1,'${randomUUID()}',null); reset role;`, 'UPDATE_HELD');
   try {
     const pendingReview=local('rui','/rest/v1/rpc/advisory_review_report',{...reviewArgs,p_idempotency_key:randomUUID()});
+    const pendingReceipt=local('clientA','/rest/v1/rpc/advisory_record_receipt',{p_publication_id:litePublicationId});
     let waiting=false;
     for(let n=0;n<50&&!waiting;n++){
       await new Promise(resolve=>setTimeout(resolve,100));
       const check=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,input:"select count(*) from pg_stat_activity where wait_event_type='Lock' and query ilike '%advisory_review_report%';"});
       requireCondition(check.status===0,'Lite review waiter query succeeds'); waiting=Number(check.stdout.trim())>0;
     }
-    requireCondition(waiting,'Lite review waits for intake update'); updateHolder.proc.stdin.end('commit;\n');
-    requireCondition(await updateHolder.done===0,'Lite intake update commits');
-    const staleReview=await pendingReview;
+    requireCondition(waiting,'Lite review waits for intake update');
+    let receiptWaiting=false;
+    for(let n=0;n<50&&!receiptWaiting;n++){
+      await new Promise(resolve=>setTimeout(resolve,100));
+      const check=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,input:"select count(*) from pg_stat_activity where wait_event_type='Lock' and query ilike '%advisory_record_receipt%';"});
+      requireCondition(check.status===0,'Lite receipt waiter query succeeds'); receiptWaiting=Number(check.stdout.trim())>0;
+    }
+    requireCondition(receiptWaiting,'Lite receipt waits for intake update');
+    updateHolder.proc.stdin.end('commit;\n'); requireCondition(await updateHolder.done===0,'Lite intake update commits');
+    const [staleReview,staleReceipt]=await Promise.all([pendingReview,pendingReceipt]);
     pass('Lite review waiting behind changed intake rejects stale snapshot',staleReview.body?.code==='23514');
+    pass('Lite receipt waiting behind changed intake is denied',[401,403,404].includes(staleReceipt.status));
   } finally {if(updateHolder.proc.exitCode===null)updateHolder.proc.kill();}
   const stalePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()});
   pass('Lite old approved version cannot be published after intake changes',stalePublication.body?.code==='23514');
@@ -343,6 +373,16 @@ select pg_sleep(4); commit;`);
   const nextDelivery=await local('rui','/rest/v1/rpc/advisory_publish_report',nextPublish);
   requireCondition(nextDelivery.status===200,'new Lite delivery published');
   pass('Client sees new Lite revision, not the stale one',(await result('clientA','/reports/'+newVersion)).status===200 && (await result('clientA','/reports/'+releaseVersion)).status===404);
+  const nextDeliveryId=nextDelivery.body?.publication_id;
+  requireCondition(UUID.test(nextDeliveryId),'next Lite delivery id exists');
+  await sql(`insert into capital_web3_private.cofre_workspace_members(workspace_id,user_id,display_name,member_role) values('${workspaceA}','${users.clientA.id}','Dual role synthetic','analyst');
+    update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client';`);
+  const dualRoleReceipt=await local('clientA','/rest/v1/rpc/advisory_record_receipt',{p_publication_id:nextDeliveryId});
+  pass('Lite receipt rejects inactive client membership even with another active role',[401,403,404].includes(dualRoleReceipt.status));
+  const dualRoleData=await local('clientA','/rest/v1/advisory_report_versions?select=id&id=eq.'+newVersion);
+  pass('Lite recipient path requires active client membership despite another role',dualRoleData.status===200 && dualRoleData.body.length===0);
+  await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client';
+    delete from capital_web3_private.cofre_workspace_members where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='analyst';`);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
   pass('Disabled Lite feature suspends client access',(await result('clientA','/reports/'+newVersion)).status===404);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);

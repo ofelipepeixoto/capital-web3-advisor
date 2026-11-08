@@ -226,6 +226,14 @@ returns boolean language sql stable security definer set search_path = '' as $$
         )
         and not exists (
           select 1 from capital_web3_private.cofre_lite_report_snapshots s
+          join capital_web3_private.cofre_case_workspaces cw on cw.case_id=s.case_id
+          where s.report_version_id=p.report_version_id and not exists (
+           select 1 from capital_web3_private.cofre_workspace_members m
+           where m.workspace_id=cw.workspace_id and m.user_id=auth.uid() and m.member_role='client' and m.active
+          )
+        )
+        and not exists (
+          select 1 from capital_web3_private.cofre_lite_report_snapshots s
           left join capital_web3_private.cofre_lite_intakes_v02 i on i.case_id=s.case_id
           left join capital_web3_private.cofre_case_workspaces cw on cw.case_id=s.case_id
           left join capital_web3_private.cofre_lite_features f on f.workspace_id=cw.workspace_id
@@ -263,6 +271,44 @@ revoke all on function capital_web3.advisory_review_report(uuid,text,text,text,t
 revoke all on function capital_web3.advisory_publish_report(uuid,uuid[],text,text,timestamptz,uuid) from public,anon,authenticated,service_role;
 grant execute on function capital_web3.advisory_review_report(uuid,text,text,text,text,uuid) to authenticated;
 grant execute on function capital_web3.advisory_publish_report(uuid,uuid[],text,text,timestamptz,uuid) to authenticated;
+
+-- Serialize Lite receipts with intake changes and feature toggles. A receipt
+-- started after invalidation must fail; one started first holds the case and
+-- feature locks until commit. Legacy report receipts retain their prior path.
+create function capital_web3_private.lock_lite_receipt(p_publication uuid)
+returns void language plpgsql security definer set search_path='' as $$
+declare cid uuid; wid uuid; v_actor uuid;
+begin
+ select p.case_id into cid from capital_web3.advisory_publications p
+  join capital_web3_private.cofre_lite_report_snapshots s on s.report_version_id=p.report_version_id and s.case_id=p.case_id
+  where p.id=p_publication;
+ if cid is null then return; end if;
+ v_actor:=capital_web3_private.require_human_identity();
+ perform 1 from capital_web3.advisory_cases where id=cid for update;
+ select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=cid for share;
+ if wid is null then raise exception 'publication unavailable' using errcode='42501'; end if;
+ perform 1 from capital_web3_private.cofre_lite_features where workspace_id=wid and enabled for share;
+ if not found then raise exception 'publication unavailable' using errcode='42501'; end if;
+ perform 1 from capital_web3_private.cofre_workspaces where id=wid for share;
+ perform 1 from capital_web3_private.cofre_workspace_members m where m.workspace_id=wid and m.user_id=v_actor and m.member_role='client' and m.active for share;
+ if not found then raise exception 'publication unavailable' using errcode='42501'; end if;
+ perform 1 from capital_web3.advisory_case_clients c where c.case_id=cid and c.user_id=v_actor and c.active for share;
+ if not found then raise exception 'publication unavailable' using errcode='42501'; end if;
+ perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=v_actor for share;
+ if not found or capital_web3_private.require_human_identity() is distinct from v_actor then raise exception 'publication unavailable' using errcode='42501'; end if;
+ perform 1 from capital_web3.advisory_publications where id=p_publication and case_id=cid for update;
+ if not found or not capital_web3_private.can_receive_publication(p_publication) then raise exception 'publication unavailable' using errcode='42501'; end if;
+end $$;
+revoke all on function capital_web3_private.lock_lite_receipt(uuid) from public,anon,authenticated,service_role;
+alter function capital_web3.advisory_record_receipt(uuid) rename to advisory_record_receipt_unguarded;
+revoke all on function capital_web3.advisory_record_receipt_unguarded(uuid) from public,anon,authenticated,service_role;
+create function capital_web3.advisory_record_receipt(p_publication_id uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+begin
+ perform capital_web3_private.lock_lite_receipt(p_publication_id);
+ return capital_web3.advisory_record_receipt_unguarded(p_publication_id);
+end $$;
+revoke all on function capital_web3.advisory_record_receipt(uuid) from public,anon,authenticated,service_role;
+grant execute on function capital_web3.advisory_record_receipt(uuid) to authenticated;
 
 -- This RPC receives only the expected revision and an idempotency key. It never
 -- accepts report content from the caller. Existing review/publication RPCs still
