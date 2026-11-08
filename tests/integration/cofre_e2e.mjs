@@ -296,10 +296,11 @@ select pg_sleep(4); commit;`);
     }
     requireCondition(waiting,'Lite review waits for intake update'); updateHolder.proc.stdin.end('commit;\n');
     requireCondition(await updateHolder.done===0,'Lite intake update commits');
-    pass('Lite review waiting behind changed intake rejects stale snapshot',(await pendingReview).status===409);
+    const staleReview=await pendingReview;
+    pass('Lite review waiting behind changed intake rejects stale snapshot',staleReview.body?.code==='23514');
   } finally {if(updateHolder.proc.exitCode===null)updateHolder.proc.kill();}
-  pass('Lite old approved version cannot be published after intake changes',
-    (await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()})).status===409);
+  const stalePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()});
+  pass('Lite old approved version cannot be published after intake changes',stalePublication.body?.code==='23514');
 
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
