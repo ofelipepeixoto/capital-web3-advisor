@@ -226,6 +226,14 @@ returns boolean language sql stable security definer set search_path = '' as $$
         )
         and not exists (
           select 1 from capital_web3_private.cofre_lite_report_snapshots s
+          join capital_web3_private.cofre_case_workspaces cw on cw.case_id=s.case_id
+          where s.report_version_id=p.report_version_id and not exists (
+           select 1 from capital_web3_private.cofre_workspace_members m
+           where m.workspace_id=cw.workspace_id and m.user_id=auth.uid() and m.member_role='client' and m.active
+          )
+        )
+        and not exists (
+          select 1 from capital_web3_private.cofre_lite_report_snapshots s
           left join capital_web3_private.cofre_lite_intakes_v02 i on i.case_id=s.case_id
           left join capital_web3_private.cofre_case_workspaces cw on cw.case_id=s.case_id
           left join capital_web3_private.cofre_lite_features f on f.workspace_id=cw.workspace_id
@@ -283,7 +291,9 @@ begin
  if not found then raise exception 'publication unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3_private.cofre_workspaces where id=wid for share;
  perform 1 from capital_web3_private.cofre_workspace_members m where m.workspace_id=wid and m.user_id=v_actor and m.member_role='client' and m.active for share;
+ if not found then raise exception 'publication unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3.advisory_case_clients c where c.case_id=cid and c.user_id=v_actor and c.active for share;
+ if not found then raise exception 'publication unavailable' using errcode='42501'; end if;
  perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=v_actor for share;
  if not found or capital_web3_private.require_human_identity() is distinct from v_actor then raise exception 'publication unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3.advisory_publications where id=p_publication and case_id=cid for update;
