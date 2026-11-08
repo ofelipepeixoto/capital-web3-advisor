@@ -87,6 +87,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     expect(Boolean(browserCase), 'new case exists before binding Lite');
     await analyst.locator('#lite-tab').click();
     analyst.once('dialog', dialog => dialog.accept());
+    gate = 'Lite initial case selection';
     await analyst.locator('#lite-case').selectOption(browserCase);
     await analyst.getByRole('button', { name: 'Carregar sinais do atendimento', exact: true }).click();
     await analyst.getByText('Nenhum sinal salvo neste atendimento. Marque os dois consentimentos antes de salvar.', { exact: true }).waitFor();
@@ -94,11 +95,16 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     await analyst.getByLabel('Autorizo salvar os sinais fictícios neste atendimento.', { exact: true }).check();
     for (let i=0; i<3; i++) await analyst.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
     await analyst.locator('input[name="lite-urgency"][value="yes"]').check();
+    gate = 'Lite initial save';
     await analyst.getByRole('button', { name: 'Salvar sinais no atendimento', exact: true }).click();
     await analyst.getByText('Sinais salvos neste atendimento. Nenhum relatório foi gerado.', { exact: true }).waitFor();
+    gate = 'Lite independent login';
     const resumed = await login('ana');
     await resumed.locator('#lite-tab').click();
+    gate = 'Lite resumed case availability';
+    await resumed.locator('#lite-case option[value="' + browserCase + '"]').waitFor({ state: 'attached' });
     await resumed.locator('#lite-case').selectOption(browserCase);
+    gate = 'Lite resumed signals load';
     await resumed.getByRole('button', { name: 'Carregar sinais do atendimento', exact: true }).click();
     await resumed.getByText('Sinais salvos carregados. Outras respostas do exercício não são armazenadas.', { exact: true }).waitFor();
     for (let i=0; i<3; i++) await resumed.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();

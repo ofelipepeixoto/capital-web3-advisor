@@ -93,6 +93,7 @@ async function refresh() {
   if (staff) await cofre.load(roster); else { cofre.clear(); lite.clear(); activeView = 'diagnostics'; }
   if (epoch !== generation || !session) return;
   if (!lite.reconcile()) message('Acesso ao atendimento mudou; o exercício foi fechado.');
+  if (activeView === 'lite' && !lite.pending) lite.render();
   showView(activeView);
   if (!reports.length) $('reports').append(element('p', staff
     ? 'Nenhum rascunho atribuído. Abra Atendimentos para preparar um COFRE Individual fictício.'
