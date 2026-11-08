@@ -280,6 +280,25 @@ select pg_sleep(8); commit;`);
   const releasePkgResponse=await result('rui','/reports/'+releaseVersion+'/review-package');
   const releasePkg=releasePkgResponse.body.data;
   requireCondition(releasePkgResponse.status===200 && SHA.test(releasePkg?.content_sha256) && SHA.test(releasePkg?.manifest_sha256),'Lite review package available');
+  const liteEligibility=await result('rui','/reports/'+releaseVersion+'/lite-eligibility');
+  pass('Lite eligibility is visible to assigned reviewer and hidden from client',liteEligibility.status===200 && liteEligibility.body.data.state==='ready' && liteEligibility.body.data.can_review===true && (await result('clientA','/reports/'+releaseVersion+'/lite-eligibility')).status===404);
+  const eligibilityPath='/rest/v1/rpc/advisory_lite_report_eligibility';
+  const eligibilityArgs={p_report_version_id:releaseVersion};
+  const anonymous=await fetch(status.API_URL+eligibilityPath,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+    headers:{apikey:status.ANON_KEY,Authorization:'Bearer '+status.ANON_KEY,'Content-Type':'application/json','Content-Profile':'capital_web3'},body:JSON.stringify(eligibilityArgs)});
+  const outsider=await local('authorB',eligibilityPath,eligibilityArgs);
+  const clientEligibility=await local('clientA',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility denies anonymous, foreign staff and client on direct PostgREST',
+    [401,403,404].includes(anonymous.status) && [401,403,404].includes(outsider.status) && [401,403,404].includes(clientEligibility.status));
+  const authorEligibility=await local('ana',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility denies self review and publication',authorEligibility.status===200 && authorEligibility.body.can_review===false && authorEligibility.body.can_publish_with_valid_recipients===false);
+  await sql(`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='reviewer';`);
+  const roleEligibility=await local('rui',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility respects revoked reviewer role when another staff role remains',roleEligibility.status===200 && roleEligibility.body.can_review===false);
+  await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='reviewer';`);
+  await sql(`update capital_web3_private.cofre_workspaces set staff_mfa_required=true where id='${workspaceA}';`);
+  pass('Lite eligibility denies staff session without required MFA',[401,403,404].includes((await local('rui',eligibilityPath,eligibilityArgs)).status));
+  await sql(`update capital_web3_private.cofre_workspaces set staff_mfa_required=false where id='${workspaceA}';`);
   const reviewArgs={p_report_version_id:releaseVersion,p_decision:'approved',p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_private_notes:'',p_idempotency_key:randomUUID()};
   const publishArgs={p_report_version_id:releaseVersion,p_recipient_user_ids:[users.clientA.id],p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_expires_at:null,p_idempotency_key:randomUUID()};
   pass('Lite direct review denies author and foreign staff',
@@ -291,6 +310,9 @@ select pg_sleep(8); commit;`);
   pass('Lite unpublished draft is invisible to its client',(await result('clientA','/reports/'+releaseVersion)).status===404);
   const reviewerClaims=JSON.parse(Buffer.from(users.rui.token.split('.')[1],'base64url').toString('utf8'));
   requireCondition(UUID.test(reviewerClaims.session_id),'Lite reviewer session is valid');
+  await sql(`update auth.sessions set not_after=now()-interval '1 minute' where id='${reviewerClaims.session_id}';`);
+  pass('Lite eligibility denies a revoked or expired database session',[401,403,404].includes((await local('rui',eligibilityPath,eligibilityArgs)).status));
+  await sql(`update auth.sessions set not_after=null where id='${reviewerClaims.session_id}';`);
   async function holdSql(sqlText, marker) {
     const proc=spawn('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,stdio:['pipe','pipe','pipe']});
     const done=new Promise((resolve,reject)=>{proc.on('error',reject);proc.on('close',resolve);});
@@ -415,6 +437,8 @@ select pg_sleep(8); commit;`);
   } finally {if(updateHolder.proc.exitCode===null)updateHolder.proc.kill();}
   const stalePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()});
   pass('Lite old approved version cannot be published after intake changes',stalePublication.body?.code==='23514');
+  const staleEligibility=await local('rui',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility reports stale after a newer intake',staleEligibility.status===200 && staleEligibility.body.state==='stale' && staleEligibility.body.can_review===false && staleEligibility.body.can_publish_with_valid_recipients===false);
   pass('New Lite intake suspends earlier client access', (await result('clientA','/reports/'+releaseVersion)).status===404);
   pass('New Lite intake suspends earlier Storage fixture',!(await liteStorage('clientA',storageOld.object)).ok);
   const oldDataApi=await local('clientA','/rest/v1/advisory_report_versions?select=id&id=eq.'+releaseVersion);
@@ -447,9 +471,13 @@ select pg_sleep(8); commit;`);
     delete from capital_web3_private.cofre_workspace_members where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='analyst';`);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
   pass('Disabled Lite feature suspends client access',(await result('clientA','/reports/'+newVersion)).status===404);
+  const offEligibility=await local('rui',eligibilityPath,{p_report_version_id:newVersion});
+  pass('Lite eligibility reports disabled feature',offEligibility.status===200 && offEligibility.body.state==='feature_disabled' && offEligibility.body.can_publish_with_valid_recipients===false);
   pass('Disabled Lite feature suspends Storage fixture access',!(await liteStorage('clientA',storageNew.object)).ok);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
   pass('Re-enabled Lite feature never resurrects prior delivery',(await result('clientA','/reports/'+newVersion)).status===404);
+  const reenabledEligibility=await local('rui',eligibilityPath,{p_report_version_id:newVersion});
+  pass('Lite eligibility requires a new intake after feature cycle',reenabledEligibility.status===200 && reenabledEligibility.body.state==='new_intake_required' && reenabledEligibility.body.can_publish_with_valid_recipients===false);
   pass('Re-enabled Lite feature does not restore old Storage fixture',!(await liteStorage('clientA',storageNew.object)).ok);
   // Remove test-only associations before the old publication's manifest-bound revocation.
   await sql(`begin; set local session_replication_role=replica; delete from capital_web3.advisory_report_assets where id in ('${storageOld.asset}','${storageNew.asset}'); commit;`);
