@@ -33,7 +33,7 @@ export class JourneyExercise {
       const select=el('select');select.id=label.htmlFor;
       for(const [value,title] of OPTIONS){const opt=el('option',title);opt.value=value;select.append(opt);}
       select.value='not_assessed';
-      select.addEventListener('change',()=>{this.dirty=true;this.output.replaceChildren();});
+      select.addEventListener('change',()=>{this.dirty=true;this.epoch++;run.disabled=false;this.output.replaceChildren();});
       form.append(label,select);this.inputs.push({id,select});
     }
     const run=el('button','Conferir situação do exemplo');run.className='primary';run.type='submit';form.append(run);

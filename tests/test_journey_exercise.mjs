@@ -30,3 +30,16 @@ test('a late result cannot recreate exercise content after session cleanup',asyn
   const pending=ui.load();ui.clear();resolve({data:listSyntheticJourneys()});await pending;
   assert.equal(root.textContent,'');assert.equal(ui.dirty,false);
 });
+
+test('editing during an in-flight check suppresses the stale result and permits retry', async()=>{
+  const root=new Element('section');let resolve, calls=0;
+  const ui=new JourneyExercise({root,api:(path,body)=>{if(!body)return Promise.resolve({data:listSyntheticJourneys()});calls++;return new Promise(r=>{resolve=r;});}});
+  await ui.load();byText(root,'RASTRO').click();
+  const form=root.all().find(x=>x.tagName==='form'),run=byText(root,'Conferir situação do exemplo');
+  const pending=form.handlers.submit({preventDefault(){}});assert.equal(run.disabled,true);
+  const select=root.all().find(x=>x.tagName==='select');select.value='gap';select.handlers.change();
+  assert.equal(run.disabled,false);resolve({data:{status:'awaits_human_review',counts:{}}});await pending;
+  assert.ok(!root.textContent.includes('Etapas preenchidas no exemplo'));assert.equal(calls,1);
+  const retry=form.handlers.submit({preventDefault(){}});assert.equal(calls,2);resolve({data:{status:'needs_input',counts:{}}});await retry;
+  assert.ok(root.textContent.includes('Exercício incompleto'));
+});

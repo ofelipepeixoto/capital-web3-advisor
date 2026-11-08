@@ -70,6 +70,16 @@ commit;`);
     bRoster.body.data.length === 2 && bRoster.body.data.every(row => row.workspace_id === workspaceB));
   const clientRoster = await result('clientA', '/cofre/workspaces');
   pass('COFRE client receives no staff roster', clientRoster.status === 200 && clientRoster.body.data.length === 0);
+  const journeyCatalog = await result('ana', '/cofre/journeys');
+  pass('journey catalog available to staff only', journeyCatalog.status === 200 &&
+    (await result('clientA', '/cofre/journeys')).status === 404);
+  const journey = journeyCatalog.body.data.find(row => row.id === 'rastro');
+  requireCondition(Array.isArray(journey?.stages), 'synthetic RASTRO stages available');
+  const journeyInput = {schema_version:'journey-intake-0.1', synthetic:true, journey:'rastro',
+    responses:Object.fromEntries(journey.stages.map(id => [id,{state:'not_assessed',evidence:'none'}]))};
+  pass('journey preview denies client and returns incomplete to staff',
+    (await result('clientA', '/cofre/journeys/preview', journeyInput)).status === 404 &&
+    (await result('ana', '/cofre/journeys/preview', journeyInput)).body.data.status === 'needs_input');
 
   const create = { workspace_id: workspaceA, client_user_id: users.clientA.id, idempotency_key: randomUUID() };
   pass('COFRE foreign analyst cannot create in another workspace',

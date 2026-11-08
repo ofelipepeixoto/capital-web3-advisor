@@ -267,7 +267,13 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         }
         if (request.method === 'POST' && path === '/cofre/journeys/preview') {
           const body = await readBody(request); let data;
-          try { data = summarizeJourney(body); } catch { throw new ApiError(400, 'invalid_journey_intake'); }
+          try {
+            const validated = summarizeJourney(body);
+            // External callers cannot assert that a person reviewed evidence. Only
+            // future server-controlled review records may establish that state.
+            if (validated.stages.some(stage => stage.state === 'human_reviewed' || stage.evidence === 'human_reviewed')) throw new Error();
+            data = validated;
+          } catch { throw new ApiError(400, 'invalid_journey_intake'); }
           return respond(200, { data, request_id: requestId });
         }
         throw new ApiError(404, 'resource_unavailable');

@@ -221,7 +221,9 @@ test('synthetic exercise preview rejects real or extraneous data and never persi
   const res=await env.handler(request('/cofre/journeys/preview',{method:'POST',body}));
   const result=await res.json();assert.equal(res.status,200);assert.equal(result.data.status,'needs_input');
   assert.ok(!('score' in result.data));assert.equal(env.calls.length,4,'each request uses Auth and staff roster only');
-  for (const bad of [{...body,synthetic:false},{...body,secret:'private_marker'}, {...body,journey:'__proto__'}]) {
+  const forgedReview = structuredClone(body); forgedReview.responses[j.stages[0]] = {state:'human_reviewed',evidence:'human_reviewed'};
+  const forgedGap = structuredClone(body); forgedGap.responses[j.stages[0]] = {state:'gap',evidence:'human_reviewed'};
+  for (const bad of [{...body,synthetic:false},{...body,secret:'private_marker'}, {...body,journey:'__proto__'}, forgedReview, forgedGap]) {
     const r=await env.handler(request('/cofre/journeys/preview',{method:'POST',body:bad}));assert.equal(r.status,400);assert.ok(!(await r.text()).includes('private_marker'));
   }
 });

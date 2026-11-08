@@ -16,9 +16,9 @@ endereços, valores, arquivos ou segredos. Dados do roster não retornam na resp
 Tudo fica em memória da página e é descartado ao sair. Há aviso de perda ao
 encerrar a sessão com escolhas modificadas. Nenhum acompanhamento, relatório,
 revisão real, publicação, integração on-chain ou score é implementado. O
-atributo `human_reviewed` do motor é apenas um estado fictício enviado ao
-endpoint, não comprovação de que alguém revisou. A interface não oferece esse
-atributo. As jornadas completas permanecem pendentes de persistência autorizada,
+atributo `human_reviewed` do motor é interno ao contrato e o endpoint externo
+rejeita qualquer alegação desse tipo, inclusive em evidências de lacunas. Somente
+um registro controlado pelo servidor poderá comprovar revisão futura. As jornadas completas permanecem pendentes de persistência autorizada,
 evidências, telas específicas, regras validadas e revisão por caso.
 
 Testes Node exercitam escopo staff/cliente, payload fechado, ausência de escrita,
