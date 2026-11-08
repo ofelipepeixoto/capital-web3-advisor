@@ -40,6 +40,9 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
         const response = await handler(new Request(req.url(), { method: req.method(),
           headers: { ...req.headers(), origin }, ...(req.postData() ? { body: req.postData() } : {}) }));
         const text = await response.text();
+        if (req.method() === 'POST' && /\/cofre\/cases$/.test(new URL(req.url()).pathname) && response.status === 200) {
+          try { const data = JSON.parse(text).data; writes.push({ role, kind: 'case', case_id: data.case_id }); } catch { /* assertion below fails without a valid case */ }
+        }
         if (req.method() === 'POST' && /\/cofre\/cases\/[a-f0-9-]+\/intake$/.test(new URL(req.url()).pathname) && response.status === 200) {
           try { const data = JSON.parse(text).data; writes.push({ role, case_id: data.case_id, revision: data.revision, report_version_id: data.report_version_id }); } catch { /* assertion below fails without a valid write */ }
         }
@@ -73,18 +76,46 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     expect(await analyst.locator('#cases-panel').isVisible(), 'available journey opens assigned COFRE cases');
     gate = 'synthetic Lite learning exercise';
     await analyst.locator('#lite-tab').click();
-    expect((await analyst.locator('#lite-panel').innerText()).includes('sem vínculo com atendimento'), 'Lite clearly describes session-only exercise');
+    expect((await analyst.locator('#lite-panel').innerText()).includes('somente os dez sinais podem ser salvos'), 'Lite clearly distinguishes persisted signals from the session-only exercise');
     await analyst.locator('#lite-panel input[name="lite-experience"][value="beginner"]').check();
     await analyst.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
     await analyst.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
     await analyst.locator('#lite-panel input[name="lite-secret_exposure"][value="yes"]').check();
-    expect((await analyst.locator('#lite-panel [role="status"]').innerText()).includes('Alerta crítico'), 'Lite immediately warns about declared secret exposure');
+    expect((await analyst.locator('#lite-panel [role="status"]').first().innerText()).includes('Alerta crítico'), 'Lite immediately warns about declared secret exposure');
     expect(await analyst.locator('#lite-panel input:not([type="radio"]), #lite-panel textarea').count() === 0, 'Lite requests no free-text secrets or addresses');
     await analyst.locator('#cases-tab').click();
     await analyst.locator('#cofre-workspace-select').selectOption(workspaceA);
     await analyst.locator('#cofre-recipient').selectOption(users.clientA.id);
     await analyst.getByRole('button', { name: 'Criar atendimento fictício', exact: true }).click();
     await analyst.getByRole('heading', { name: 'Etapa 1 de 8 · Consentimento', exact: true }).waitFor();
+    gate = 'Lite persistence and independent login resume';
+    const browserCase = writes.find(row => row.role === 'ana' && row.kind === 'case')?.case_id;
+    expect(Boolean(browserCase), 'new case exists before binding Lite');
+    await analyst.locator('#lite-tab').click();
+    analyst.once('dialog', dialog => dialog.accept());
+    gate = 'Lite initial case selection';
+    await analyst.locator('#lite-case').selectOption(browserCase);
+    await analyst.getByRole('button', { name: 'Carregar sinais do atendimento', exact: true }).click();
+    await analyst.getByText('Nenhum sinal salvo neste atendimento. Marque os dois consentimentos antes de salvar.', { exact: true }).waitFor();
+    await analyst.getByLabel('Autorizo a avaliação dos sinais fictícios.', { exact: true }).check();
+    await analyst.getByLabel('Autorizo salvar os sinais fictícios neste atendimento.', { exact: true }).check();
+    for (let i=0; i<3; i++) await analyst.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
+    await analyst.locator('input[name="lite-urgency"][value="yes"]').check();
+    gate = 'Lite initial save';
+    await analyst.getByRole('button', { name: 'Salvar sinais no atendimento', exact: true }).click();
+    await analyst.getByText('Sinais salvos neste atendimento. Nenhum relatório foi gerado.', { exact: true }).waitFor();
+    gate = 'Lite independent login';
+    const resumed = await login('ana');
+    await resumed.locator('#lite-tab').click();
+    gate = 'Lite resumed case availability';
+    await resumed.locator('#lite-case option[value="' + browserCase + '"]').waitFor({ state: 'attached' });
+    await resumed.locator('#lite-case').selectOption(browserCase);
+    gate = 'Lite resumed signals load';
+    await resumed.getByRole('button', { name: 'Carregar sinais do atendimento', exact: true }).click();
+    await resumed.getByText('Sinais salvos carregados. Outras respostas do exercício não são armazenadas.', { exact: true }).waitFor();
+    for (let i=0; i<3; i++) await resumed.locator('#lite-panel').getByRole('button', { name: 'Continuar', exact: true }).click();
+    expect(await resumed.locator('input[name="lite-urgency"][value="yes"]').isChecked(), 'Lite signals persist across a new real Auth session');
+    await analyst.locator('#cases-tab').click();
     const next = () => analyst.getByRole('button', { name: 'Continuar', exact: true }).click();
     gate = 'explicit synthetic consent';
     await next();

@@ -10,7 +10,12 @@ let client, session, reports = [], publications = [], generation = 0, detailGene
 let busy = false;
 let roster = [], activeView = 'diagnostics', cofre, authUI;
 let partialCapability = false;
-const lite = new LiteSimulation($('lite-workspace'));
+const lite = new LiteSimulation($('lite-workspace'), {
+  api: (path, body) => client.api(path, body),
+  // Case projection has no workspace id; the server checks workspace membership and capability.
+  cases: () => (cofre?.cases || []).filter(item => session?.assignments?.some(a => a.case_id === item.id && ['analyst','admin'].includes(a.staff_role))),
+  confirm: text => window.confirm(text),
+});
 const exercises = new JourneyExercise({root: $('journey-exercise'), api: (path, body) => client.api(path, body)});
 let accessLink = null, accessLinkError = false;
 // Remove Auth fragments before configuration requests or rendering any account data.
@@ -91,6 +96,8 @@ async function refresh() {
   $('workspace-nav').hidden = !staff;
   if (staff) await cofre.load(roster); else { cofre.clear(); lite.clear(); exercises.clear(); activeView = 'diagnostics'; }
   if (epoch !== generation || !session) return;
+  if (!lite.reconcile()) message('Acesso ao atendimento mudou; o exercício foi fechado.');
+  if (activeView === 'lite' && !lite.pending) lite.render();
   showView(activeView);
   if (staff && activeView === 'journeys' && !exercises.root.children.length) exercises.load();
   if (!reports.length) $('reports').append(element('p', staff
@@ -260,7 +267,7 @@ cofre = new CofreWorkspace({ root: $('cofre-workspace'), partialEnabled: () => p
 $('journeys-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { showView('journeys', true); if (!exercises.root.children.length) exercises.load(); } });
 $('open-cofre').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
-$('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.root.children.length) lite.render(); showView('lite', true); } });
+$('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.pending) lite.render(); showView('lite', true); } });
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
 window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty || exercises.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
 
@@ -289,13 +296,13 @@ $('login-form').addEventListener('submit', async event => {
   finally { busy = false; $('login').disabled = false; $('login').textContent = 'Entrar'; }
 });
 $('logout').addEventListener('click', async () => {
-  if (cofre?.pending) { message('Aguarde o resultado da operação atual antes de sair. Se a conexão falhar, confira o atendimento salvo antes de repetir.'); return; }
+  if (cofre?.pending || lite.pending) { message('Aguarde o resultado da operação atual antes de sair. Se a conexão falhar, confira o atendimento salvo antes de repetir.'); return; }
   if ((cofre?.dirty || lite.dirty || exercises.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }
   catch { message('Acesso local encerrado. O servidor não confirmou a saída; tente novamente ao recuperar a conexão.'); }
 });
 $('refresh').addEventListener('click', async () => {
-  if (cofre.pending) { message('Aguarde a gravação atual antes de conferir o acesso.'); return; }
+  if (cofre.pending || lite.pending) { message('Aguarde a operação atual antes de conferir o acesso.'); return; }
   if (busy || !session) return; busy = true;
   try { await refresh(); message('Acesso atualizado.'); } catch (error) { message(error.message); }
   finally { busy = false; }
