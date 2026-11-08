@@ -1,10 +1,10 @@
 # Contrato preliminar das jornadas sintéticas
 
-Este módulo introduz um motor puro e testável que organiza campos fechados para
-quatro jornadas, sem modificar a aplicação publicada. Não é uma interface,
-endpoint, persistência, integração externa, relatório, nota ou aprovação. Ainda
-precisa de escopo, autenticação, autorização, política de dados, UX, testes e
-integração com serviço antes de seu uso em uma jornada hospedada.
+Este módulo organiza campos fechados para quatro exercícios de equipe. Há uma
+interface e endpoints sintéticos autenticados na branch para revisão. Não há
+persistência, integração externa, relatório, nota ou aprovação para essas
+jornadas. Dados reais e uso hospedado exigem ainda política, contratos e testes
+próprios.
 
 | Jornada | Etapas propostas | Referência dos requisitos |
 |---|---|---|
