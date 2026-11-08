@@ -291,3 +291,23 @@ test('Lite receipt quota maps to a specific sanitized limit even when upstream r
   const result=await handler(request(`/cofre/cases/${CASE}/lite-signals`,{method:'POST',body}));
   assert.equal(result.status,429); const text=await result.text(); assert.match(text,/lite_save_limit/);assert.ok(!text.includes('private marker'));
 });
+
+
+test('Lite 0.2 saves full closed enum intake through scoped RPC; missing and injected values denied', async () => {
+  const { SIGNAL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-rules.ts');
+  const { LITE_CONTROL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-intake.mjs');
+  const draft = {schema_version:'cofre-lite-intake-0.2', synthetic:true, consents:{assessment:true,storage:true},
+    profile:{experience:'unknown'}, controls:Object.fromEntries(LITE_CONTROL_IDS.map(id=>[id,'unknown'])),
+    signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
+  const body={intake:draft,expected_revision:0,idempotency_key:KEY,legacy_revision:null};
+  const path=`/cofre/cases/${CASE}/lite-intake`, h=setup({data:{revision:1}});
+  assert.equal((await h.handler(request(path,{method:'POST',body,authenticated:false}))).status,401);
+  assert.equal((await h.handler(request(path,{method:'POST',body}))).status,200);
+  assert.ok(h.calls.at(-1).url.endsWith('/rest/v1/rpc/advisory_lite_intake_save'));
+  for (const invalid of [{...draft,profile:{experience:null}}, {...draft,controls:{...draft.controls,secret_exposure:'not_applicable'}},
+    {...draft,controls:{...draft.controls,extra:'secret-marker'}}, {...draft,consents:{assessment:true,storage:false}},
+    {...draft,signals:{...draft.signals,urgency:'secret-marker'}}]) {
+    const before=h.calls.length, res=await h.handler(request(path,{method:'POST',body:{...body,intake:invalid}}));
+    assert.equal(res.status,400); assert.equal(h.calls.length,before+1); assert.ok(!(await res.text()).includes('secret-marker'));
+  }
+});
