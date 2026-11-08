@@ -133,6 +133,9 @@ select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('ca
 select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'), jsonb_set(jsonb_set(jsonb_set(pg_temp.data('content'),'{as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,0,as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,1,as_of}','"2000-01-01T00:00:00.000Z"'),0,'73000000-0000-0000-0000-000000000006')=pg_temp.data('saved'),
  'confirmed idempotent retry survives freshness window');
+select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
+ pg_temp.data('intake'),jsonb_set(jsonb_set(jsonb_set(pg_temp.data('content'),'{as_of}',to_jsonb(to_char((now()+interval '1 minute') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))),'{sources,0,as_of}',to_jsonb(to_char((now()+interval '1 minute') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))),'{sources,1,as_of}',to_jsonb(to_char((now()+interval '1 minute') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))),0,'73000000-0000-0000-0000-000000000006')=pg_temp.data('saved'),
+ 'retry with a newly generated timestamp returns original version');
 select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),jsonb_set(pg_temp.data('content'),'{summary}','"malicious retry"'),0,'73000000-0000-0000-0000-000000000006')$q$,
  '22023','changed report text denied even on idempotent retry');
