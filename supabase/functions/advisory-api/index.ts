@@ -253,7 +253,13 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         if (value === null) throw new ApiError(401, 'authentication_required');
         if (!isObject(value) || typeof value.mfa_required !== 'boolean' ||
             !['aal1','aal2'].includes(String(value.assurance_level))) throw new ApiError(503, 'upstream_unavailable');
-        return respond(200, { mfa_required: value.mfa_required, assurance_level: value.assurance_level, partial_intake_enabled: env('COFRE_PARTIAL_ENABLED') === 'true', request_id: requestId });
+        let partialEnabled = false;
+        if (env('COFRE_PARTIAL_ENABLED') === 'true') {
+          const capability = await rpc('advisory_cofre_partial_capability', {});
+          if (typeof capability !== 'boolean') throw new ApiError(503, 'upstream_unavailable');
+          partialEnabled = capability;
+        }
+        return respond(200, { mfa_required: value.mfa_required, assurance_level: value.assurance_level, partial_intake_enabled: partialEnabled, request_id: requestId });
       }
       if (request.method === 'GET' && path === '/cofre/workspaces') {
         return respond(200, { data: await rpc('advisory_cofre_workspaces', {}), request_id: requestId });

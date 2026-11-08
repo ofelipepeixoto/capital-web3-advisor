@@ -264,3 +264,15 @@ test('stale restore never discards unsaved edits or accepts failed request', asy
   await button(h.root,'Retomar respostas parciais anteriores').click(); assert.equal(h.ui.stalePartial,true); assert.ok(h.root.textContent.includes('alterações nesta tela'));
   h.ui.dirty=false; await button(h.root,'Retomar respostas parciais anteriores').click(); assert.equal(h.ui.stalePartial,true); assert.ok(h.root.textContent.includes('conflito'));
 });
+
+test('opening detects a final revision changed between final and partial reads', async () => {
+  let reads=0; const h=harness(async path=>{
+    if(path==='/cases') return {data:[entry]};
+    if(path.endsWith('/intake')) return {data:{revision:++reads,intake:valid()}};
+    if(path.endsWith('/partial')) return {data:{intake:valid(),revision:1,base_revision:1,stale:false}};
+    throw Error('unexpected');
+  });
+  await h.ui.load(roster); await h.ui.open(entry);
+  assert.ok(h.root.textContent.includes('A versão mudou durante a abertura'));
+  assert.equal(button(h.root,'Salvar progresso'),undefined);
+});

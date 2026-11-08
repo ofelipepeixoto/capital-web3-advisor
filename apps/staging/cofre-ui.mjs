@@ -258,6 +258,9 @@ export class CofreWorkspace {
       if (canEdit && this.partialEnabled()) {
         const partial = await this.api('/cofre/cases/' + entry.id + '/partial');
         if (epoch !== this.epoch || caseEpoch !== this.caseEpoch || !this.currentSession()) return;
+        const fresh = await this.api('/cofre/cases/' + entry.id + '/intake');
+        if (epoch !== this.epoch || caseEpoch !== this.caseEpoch || !this.currentSession()) return;
+        if ((fresh.data?.revision || 0) !== this.revision) throw new Error('A versão mudou durante a abertura. Reabra o atendimento para conferir as respostas atuais.');
         if (partial.data) {
           if (!Number.isInteger(partial.data.revision) || partial.data.revision<1 || typeof partial.data.stale !== 'boolean' || partial.data.intake?.schema_version !== 'cofre-intake-0.1') throw new Error('Rascunho parcial inválido. Peça apoio à equipe.');
           this.partialRevision = partial.data.revision; this.stalePartial = partial.data.stale;
@@ -440,7 +443,7 @@ export class CofreWorkspace {
       if (epoch !== this.epoch || caseEpoch !== this.caseEpoch) return;
       this.notice('As respostas continuam nesta sessão. Não feche a página antes de conferir o resultado.');
       if (error.status === 409) {
-        const block = node('section', '', 'boundary'); block.append(node('p', 'Outra gravação mudou este atendimento. Suas respostas não foram substituídas automaticamente. Confira a versão salva antes de retomar.'),
+        const block = node('section', '', 'boundary'); block.append(node('p', 'A versão mudou ou existe progresso parcial protegido. Suas respostas não foram substituídas automaticamente. Confira o atendimento e, se necessário, peça apoio à equipe antes de continuar.'),
           this.action('Descartar minhas alterações e carregar a revisão salva', () => this.open(this.active, { discard: true }), 'danger'));
         this.detail.append(block);
       }

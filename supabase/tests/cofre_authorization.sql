@@ -125,9 +125,29 @@ select pg_temp.require(capital_web3.advisory_create_cofre_case('83000000-0000-00
 select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),jsonb_set(pg_temp.data('content'),'{summary}','"fabricated synthetic safety claim"'),0,'73000000-0000-0000-0000-000000000089')$q$,
  '22023','direct RPC denies fabricated report text');
+-- A direct PostgREST RPC cannot bypass the default-closed database capability.
+select pg_temp.require(not capital_web3.advisory_cofre_partial_capability(),'partial capability defaults off');
+select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','direct partial read denied while feature off');
+select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),0,0,'73000000-0000-0000-0000-000000000096')$q$,'42501','direct partial write denied while feature off');
+reset role;
+update capital_web3_private.cofre_partial_limits set partial_enabled=true where singleton=true;
+set local role authenticated;
+select pg_temp.require(capital_web3.advisory_cofre_partial_capability(),'owner enabled partial capability for fixture');
 insert into cofre_test_data values('partial',capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
  jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091'));
 select pg_temp.require((pg_temp.data('partial')->>'revision')::integer=1,'partial save stores one revision');
+reset role;
+update capital_web3_private.cofre_partial_limits set partial_enabled=false where singleton=true;
+set local role authenticated;
+select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000097')$q$,'23514','cannot finalize while hidden partial exists and feature is off');
+select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
+select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000098')$q$,'42501','foreign role cannot infer whether partial exists');
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+
+reset role;
+update capital_web3_private.cofre_partial_limits set partial_enabled=true where singleton=true;
+set local role authenticated;
+
 select pg_temp.require(capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
  jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091')=pg_temp.data('partial'),'partial retry is idempotent');
 select pg_temp.require(capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)#>>'{intake,profile,objective}'='', 'partial preserves empty objective');

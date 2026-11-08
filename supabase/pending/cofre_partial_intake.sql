@@ -25,12 +25,20 @@ revoke all on capital_web3_private.cofre_partial_receipts from public,anon,authe
 -- Owner-configured ceiling, no automatic deletion or unapproved retention policy.
 create table capital_web3_private.cofre_partial_limits (
  singleton boolean primary key default true check(singleton),
- max_receipts_per_actor integer not null check(max_receipts_per_actor between 1 and 100000)
+ max_receipts_per_actor integer not null check(max_receipts_per_actor between 1 and 100000),
+ partial_enabled boolean not null default false
 );
 alter table capital_web3_private.cofre_partial_limits enable row level security;
 alter table capital_web3_private.cofre_partial_limits force row level security;
 revoke all on capital_web3_private.cofre_partial_limits from public,anon,authenticated,service_role;
 insert into capital_web3_private.cofre_partial_limits(singleton,max_receipts_per_actor) values(true,1000);
+-- The database switch is authoritative even for direct PostgREST calls.
+create function capital_web3.advisory_cofre_partial_capability()
+returns boolean language plpgsql stable security definer set search_path='' as $$
+begin
+ perform capital_web3_private.require_human_identity();
+ return coalesce((select partial_enabled from capital_web3_private.cofre_partial_limits where singleton=true),false);
+end $$;
 create function capital_web3_private.cofre_partial_validate(v jsonb)
 returns void language plpgsql immutable set search_path='' as $$
 declare cleaned jsonb:=v; i integer;
@@ -52,6 +60,7 @@ returns jsonb language plpgsql security definer set search_path='' as $$
 declare v_actor uuid; wid uuid; result jsonb; rev integer;
 begin
  v_actor:=capital_web3_private.require_human_identity();
+ if not coalesce((select partial_enabled from capital_web3_private.cofre_partial_limits where singleton=true),false) then raise exception 'partial unavailable' using errcode='42501'; end if;
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
  if wid is null or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  select coalesce(max(revision),0) into rev from capital_web3.cofre_intakes where case_id=p_case_id;
@@ -61,9 +70,10 @@ begin
 end $$;
 create function capital_web3.advisory_cofre_partial_save(p_case_id uuid,p_intake jsonb,p_expected_revision integer,p_base_revision integer,p_idempotency_key uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare v_actor uuid; wid uuid; r integer; rev integer; req_hash bytea; cap integer; old capital_web3_private.cofre_partial_receipts%rowtype; result jsonb;
+declare v_actor uuid; wid uuid; r integer; rev integer; req_hash bytea; cap integer; enabled boolean; old capital_web3_private.cofre_partial_receipts%rowtype; result jsonb;
 begin
  v_actor:=capital_web3_private.require_human_identity();
+ if not coalesce((select partial_enabled from capital_web3_private.cofre_partial_limits where singleton=true),false) then raise exception 'partial unavailable' using errcode='42501'; end if;
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
  if wid is null or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  if p_expected_revision is null or p_expected_revision<0 or p_base_revision is null or p_base_revision<0 or p_idempotency_key is null then raise exception 'invalid revision' using errcode='22023'; end if;
@@ -72,6 +82,9 @@ begin
  -- The request may have waited on another transaction. Recheck current session and membership.
  if capital_web3_private.require_human_identity()<>v_actor or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text||':partial:quota',0));
+ if capital_web3_private.require_human_identity()<>v_actor or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
+ select partial_enabled into enabled from capital_web3_private.cofre_partial_limits where singleton=true for share;
+ if not coalesce(enabled,false) then raise exception 'partial unavailable' using errcode='42501'; end if;
  req_hash:=pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('operation','save','case',p_case_id,'intake',p_intake,'revision',p_expected_revision,'base_revision',p_base_revision)::text,'UTF8'));
  select * into old from capital_web3_private.cofre_partial_receipts where cofre_partial_receipts.actor=v_actor and key=p_idempotency_key;
  if found then if old.request_hash<>req_hash then raise exception 'key conflict' using errcode='23505'; end if; return old.result; end if;
@@ -92,15 +105,19 @@ end $$;
 -- An explicit restore changes only draft metadata; original report and answers remain intact.
 create function capital_web3.advisory_cofre_partial_restore(p_case_id uuid,p_expected_revision integer,p_base_revision integer,p_idempotency_key uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare v_actor uuid; wid uuid; r integer; current_base integer; rev integer; req_hash bytea; cap integer; old capital_web3_private.cofre_partial_receipts%rowtype; result jsonb;
+declare v_actor uuid; wid uuid; r integer; current_base integer; rev integer; req_hash bytea; cap integer; enabled boolean; old capital_web3_private.cofre_partial_receipts%rowtype; result jsonb;
 begin
  v_actor:=capital_web3_private.require_human_identity();
+ if not coalesce((select partial_enabled from capital_web3_private.cofre_partial_limits where singleton=true),false) then raise exception 'partial unavailable' using errcode='42501'; end if;
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
  if wid is null or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  if p_expected_revision is null or p_expected_revision<1 or p_base_revision is null or p_base_revision<1 or p_idempotency_key is null then raise exception 'invalid revision' using errcode='22023'; end if;
  perform 1 from capital_web3.advisory_cases where id=p_case_id for update;
  if capital_web3_private.require_human_identity()<>v_actor or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text||':partial:quota',0));
+ if capital_web3_private.require_human_identity()<>v_actor or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
+ select partial_enabled into enabled from capital_web3_private.cofre_partial_limits where singleton=true for share;
+ if not coalesce(enabled,false) then raise exception 'partial unavailable' using errcode='42501'; end if;
  req_hash:=pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('operation','restore','case',p_case_id,'revision',p_expected_revision,'base_revision',p_base_revision)::text,'UTF8'));
  select * into old from capital_web3_private.cofre_partial_receipts where cofre_partial_receipts.actor=v_actor and key=p_idempotency_key;
  if found then if old.request_hash<>req_hash then raise exception 'key conflict' using errcode='23505'; end if; return old.result; end if;
@@ -116,6 +133,8 @@ begin
  insert into capital_web3.advisory_audit_events(case_id,actor_user_id,action,entity_id) values(p_case_id,v_actor,'cofre_partial_restored',p_case_id);
  return result;
 end $$;
+revoke all on function capital_web3.advisory_cofre_partial_capability() from public,anon,authenticated,service_role;
+grant execute on function capital_web3.advisory_cofre_partial_capability() to authenticated;
 revoke all on function capital_web3_private.cofre_partial_validate(jsonb),capital_web3.advisory_cofre_partial_get(uuid),capital_web3.advisory_cofre_partial_save(uuid,jsonb,integer,integer,uuid),capital_web3.advisory_cofre_partial_restore(uuid,integer,integer,uuid) from public,anon,authenticated,service_role;
 grant execute on function capital_web3.advisory_cofre_partial_get(uuid),capital_web3.advisory_cofre_partial_save(uuid,jsonb,integer,integer,uuid),capital_web3.advisory_cofre_partial_restore(uuid,integer,integer,uuid) to authenticated;
 commit;

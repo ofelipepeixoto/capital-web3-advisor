@@ -226,3 +226,14 @@ test('receipt capacity also fails closed for restore', async () => {
   const response=await h.handler(request(`/cofre/cases/${CASE}/partial/restore`, {method:'POST',body:{expected_revision:1,base_revision:1,idempotency_key:KEY}}));
   assert.equal(response.status,429); assert.ok(!(await response.text()).includes('private'));
 });
+
+test('capability requires the database switch as well as the Edge flag', async () => {
+  const calls=[]; const handler=createHandler(name=>config[name],async (url,init)=>{
+    calls.push(String(url)); if(String(url).endsWith('/auth/v1/user')) return reply({id:USER,is_anonymous:false});
+    if(String(url).endsWith('/rpc/advisory_access_requirements')) return reply({mfa_required:false,assurance_level:'aal1'});
+    if(String(url).endsWith('/rpc/advisory_cofre_partial_capability')) return reply(false);
+    throw Error('unexpected request');
+  });
+  const response=await handler(request('/access-requirements')); assert.equal(response.status,200);
+  assert.equal((await response.json()).partial_intake_enabled,false); assert.equal(calls.length,3);
+});
