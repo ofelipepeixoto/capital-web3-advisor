@@ -239,7 +239,7 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         const result = await readBoundedJson(response, UPSTREAM_LIMIT);
         if (!response.ok) {
           const code = isObject(result) ? result.code : null;
-          if (['/rest/v1/rpc/advisory_lite_signals_save','/rest/v1/rpc/advisory_lite_intake_save'].includes(pathname) && code === '54000') throw new ApiError(429, 'lite_save_limit');
+          if (['/rest/v1/rpc/advisory_lite_signals_save','/rest/v1/rpc/advisory_lite_intake_save','/rest/v1/rpc/advisory_lite_create_draft'].includes(pathname) && code === '54000') throw new ApiError(429, 'lite_save_limit');
           if (response.status >= 500) throw new ApiError(503, "upstream_unavailable");
           if (['/rpc/advisory_cofre_partial_save','/rpc/advisory_cofre_partial_restore'].some(suffix => pathname.endsWith(suffix)) && code === 'P0001' && isObject(result) && result.message === 'partial receipt capacity reached') throw new ApiError(429, 'partial_capacity_reached');
           if (code === "23505" || code === "23514") throw new ApiError(409, "state_conflict");
@@ -307,6 +307,16 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         exactKeys(body, ['expected_revision', 'base_revision', 'idempotency_key']);
         if (![body.expected_revision,body.base_revision].every(v => Number.isSafeInteger(v) && (v as number)>=1 && (v as number)<=10000)) throw new ApiError(400, 'invalid_request');
         const data = await rpc('advisory_cofre_partial_restore', {p_case_id:assertUuid(restoreRoute[1]),p_expected_revision:body.expected_revision,p_base_revision:body.base_revision,p_idempotency_key:assertUuid(body.idempotency_key)});
+        return respond(200, {data, request_id:requestId});
+      }
+      const liteReportRoute = path.match(/^\/cofre\/cases\/([^/]+)\/lite-report$/);
+      if (liteReportRoute && request.method === 'POST') {
+        const caseId = assertUuid(liteReportRoute[1]);
+        const body = await readBody(request);
+        exactKeys(body, ['expected_revision', 'idempotency_key']);
+        if (!Number.isSafeInteger(body.expected_revision) || (body.expected_revision as number)<1 || (body.expected_revision as number)>10000) throw new ApiError(400, 'invalid_request');
+        const data = await rpc('advisory_lite_create_draft', {p_case_id:caseId,
+          p_expected_revision:body.expected_revision, p_idempotency_key:assertUuid(body.idempotency_key)});
         return respond(200, {data, request_id:requestId});
       }
       const liteIntakeRoute = path.match(/^\/cofre\/cases\/([^/]+)\/lite-intake$/);
