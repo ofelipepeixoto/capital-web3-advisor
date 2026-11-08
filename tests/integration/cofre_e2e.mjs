@@ -144,6 +144,37 @@ select pg_sleep(4); commit;`);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
   pass('Lite confirmed disable denies new direct reads', (await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId})).status===403);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
+  // Block the case row, wait until the authenticated writer is queued, revoke
+  // analyst membership, and then release the row. No credentials are logged.
+  const caseHolder = spawn('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,stdio:['pipe','pipe','pipe']});
+  const caseDone = new Promise((resolve,reject)=>{caseHolder.on('error',reject);caseHolder.on('close',code=>resolve(code));});
+  const caseReady = new Promise((resolve,reject)=>{
+    let output='';const timeout=setTimeout(()=>reject(Error('case lock did not start')),10000);
+    caseHolder.stdout.on('data',chunk=>{output+=chunk.toString();if(output.includes('CASE_LOCK_READY')){clearTimeout(timeout);resolve();}});
+    caseHolder.on('error',error=>{clearTimeout(timeout);reject(error);});
+    caseHolder.on('close',()=>{clearTimeout(timeout);if(!output.includes('CASE_LOCK_READY'))reject(Error('case lock stopped'));});
+  });
+  caseHolder.stdin.write(`begin; select id from capital_web3.advisory_cases where id='${caseId}' for update;\n\\echo CASE_LOCK_READY\n`);
+  try {
+    await caseReady;
+    const waitingSave={intake:liteDraft,expected_revision:3,idempotency_key:randomUUID()};
+    const delayed = result('ana',litePath,waitingSave);
+    let waiting=false;
+    for (let n=0;n<40 && !waiting;n++) {
+      await new Promise(resolve=>setTimeout(resolve,100));
+      const check = spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,
+        input:"select count(*) from pg_stat_activity where wait_event_type='Lock' and query ilike '%advisory_lite_signals_save%';"});
+      requireCondition(check.status===0,'Lite lock waiter query succeeds');
+      waiting=Number(check.stdout.trim())>0;
+    }
+    requireCondition(waiting,'Lite write is waiting for case lock before revocation');
+    await sql(`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst';`);
+    caseHolder.stdin.end('commit;\n');
+    requireCondition(await caseDone===0,'case lock transaction committed');
+    pass('Lite rechecks analyst membership after waiting for the case lock',(await delayed).status===404);
+  } finally { if(caseHolder.exitCode===null)caseHolder.kill(); }
+  await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst';`);
+
 
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
