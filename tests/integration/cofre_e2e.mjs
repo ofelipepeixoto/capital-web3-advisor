@@ -280,6 +280,8 @@ select pg_sleep(8); commit;`);
   const releasePkgResponse=await result('rui','/reports/'+releaseVersion+'/review-package');
   const releasePkg=releasePkgResponse.body.data;
   requireCondition(releasePkgResponse.status===200 && SHA.test(releasePkg?.content_sha256) && SHA.test(releasePkg?.manifest_sha256),'Lite review package available');
+  const liteEligibility=await result('rui','/reports/'+releaseVersion+'/lite-eligibility');
+  pass('Lite eligibility is visible to assigned reviewer and hidden from client',liteEligibility.status===200 && liteEligibility.body.data.state==='ready' && liteEligibility.body.data.can_review===true && (await result('clientA','/reports/'+releaseVersion+'/lite-eligibility')).status===404);
   const reviewArgs={p_report_version_id:releaseVersion,p_decision:'approved',p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_private_notes:'',p_idempotency_key:randomUUID()};
   const publishArgs={p_report_version_id:releaseVersion,p_recipient_user_ids:[users.clientA.id],p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_expires_at:null,p_idempotency_key:randomUUID()};
   pass('Lite direct review denies author and foreign staff',

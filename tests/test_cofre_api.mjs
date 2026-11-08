@@ -341,3 +341,17 @@ test('Lite report hides database denial and maps conflict and quota without leak
     assert.ok(!text.includes('sensitive-marker')); assert.ok(!text.includes(TOKEN));
   }
 });
+
+test('Lite eligibility is an authenticated read-only scoped server query', async () => {
+  const path=`/reports/${VERSION}/lite-eligibility`;
+  const value={report_version_id:VERSION,state:'ready',review_state:'pending',can_review:true,can_publish_with_valid_recipients:false};
+  const h=setup({data:value});
+  assert.equal((await h.handler(request(path,{authenticated:false}))).status,401);
+  assert.equal(h.calls.length,0);
+  const res=await h.handler(request(path));
+  assert.equal(res.status,200); assert.deepEqual((await res.json()).data,value);
+  assert.equal(h.calls.at(-1).url,BASE+'/rest/v1/rpc/advisory_lite_report_eligibility');
+  assert.deepEqual(JSON.parse(h.calls.at(-1).init.body),{p_report_version_id:VERSION});
+  const denied=setup({data:{code:'42501',message:'private marker'},dbStatus:403});
+  const error=await denied.handler(request(path)); assert.equal(error.status,404); assert.ok(!(await error.text()).includes('private marker'));
+});
