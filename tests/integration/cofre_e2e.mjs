@@ -130,8 +130,8 @@ commit;`);
   const v02Path='/cofre/cases/'+caseId+'/lite-intake';
   const controlIds=['backup','vault','apps','spending','testing','watch','recovery','secret_exposure','source','permissions','payload','routine'];
   const draft02={schema_version:'cofre-lite-intake-0.2',synthetic:true,consents:{assessment:true,storage:true},profile:{experience:'unknown'},controls:Object.fromEntries(controlIds.map(id=>[id,'unknown'])),signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
-  const marker=await result('ana',v02Path);
-  pass('Lite 0.2 detects earlier signals without importing them',marker.status===200 && marker.body.data.legacy_available===true && marker.body.data.legacy_revision===2);
+  const legacyMarker=await result('ana',v02Path);
+  pass('Lite 0.2 detects earlier signals without importing them',legacyMarker.status===200 && legacyMarker.body.data.legacy_available===true && legacyMarker.body.data.legacy_revision===2);
   const save02={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:null};
   pass('Lite 0.2 requires explicit acknowledgment of existing signals',(await result('ana',v02Path,save02)).status===409);
   const invalid02=fresh(save02);invalid02.intake.profile.experience=null;
@@ -149,6 +149,21 @@ commit;`);
   const rival02=fresh(second02);rival02.idempotency_key=randomUUID();rival02.intake.controls.backup='yes';
   const race02=await Promise.all([result('ana',v02Path,second02),result('ana',v02Path,rival02)]);
   pass('Lite 0.2 simultaneous edits have one conflict',race02.map(r=>r.status).sort().join(',')==='200,409');
+  // An old tab and an explicit migration cannot commit conflicting sources.
+  const otherCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
+  const migrationCase=otherCreated.body.data?.case_id;
+  requireCondition(UUID.test(migrationCase),'transition race case exists');
+  const oldPath='/cofre/cases/'+migrationCase+'/lite-signals', newPath='/cofre/cases/'+migrationCase+'/lite-intake';
+  const baselineLegacy={intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
+  requireCondition((await result('ana',oldPath,baselineLegacy)).status===200,'transition race has initial legacy signals');
+  const legacyUpdate={intake:{...liteDraft,signals:{...liteDraft.signals,urgency:'yes'}},expected_revision:1,idempotency_key:randomUUID()};
+  const newIntake={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:1};
+  const transition=await Promise.all([result('ana',oldPath,legacyUpdate),result('ana',newPath,newIntake)]);
+  pass('Lite concurrent legacy write and transition never both commit',transition.map(r=>r.status).sort().join(',')==='200,409');
+  const checkTransition=await result('ana',newPath);
+  pass('Lite transition race leaves visible version or updated legacy marker',checkTransition.status===200 &&
+    (transition[1].status===200 ? checkTransition.body.data.revision===1 : checkTransition.body.data.legacy_revision===2));
+
   // A write holding the feature's shared row lock must finish before an operator
   // can commit disabling it. Actual local psql sessions; no credentials logged.
   const claims = JSON.parse(Buffer.from(users.ana.token.split('.')[1], 'base64url').toString('utf8'));
