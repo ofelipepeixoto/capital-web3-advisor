@@ -39,6 +39,8 @@ do $$ begin
  or has_table_privilege('authenticated','capital_web3_private.cofre_workspace_members','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','SELECT')
  or has_table_privilege('authenticated','capital_web3_private.cofre_partial_intakes','INSERT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','SELECT')
+ or has_table_privilege('authenticated','capital_web3_private.cofre_partial_receipts','INSERT')
  or has_column_privilege('authenticated','capital_web3.cofre_intakes','created_by','SELECT') then
  raise exception 'unexpected COFRE privileges'; end if;
 end $$;
@@ -99,6 +101,11 @@ commit;`);
   pass('COFRE partial changed input cannot reuse key', (await result('ana', partialPath, altered)).status === 409);
   const conflict = fresh(altered); conflict.idempotency_key = randomUUID();
   pass('COFRE partial stale revision is rejected', (await result('ana', partialPath, conflict)).status === 409);
+  pass('COFRE partial read denied to client and foreign analyst', (await result('clientA', partialPath)).status === 404 && (await result('authorB', partialPath)).status === 404);
+  const nextA = fresh(partialSave); nextA.expected_revision=1; nextA.idempotency_key=randomUUID(); nextA.intake.profile.liquidity='short_term';
+  const nextB = fresh(partialSave); nextB.expected_revision=1; nextB.idempotency_key=randomUUID(); nextB.intake.profile.loss_capacity='essential';
+  const racedPartial = await Promise.all([result('ana',partialPath,nextA),result('ana',partialPath,nextB)]);
+  pass('COFRE concurrent partial edits preserve one winner and reject one stale revision', racedPartial.map(r=>r.status).sort().join(',')==='200,409');
   const fetchedPartial = await result('ana', partialPath);
   pass('COFRE partial can be resumed without filling empty fields', fetchedPartial.status === 200 && fetchedPartial.body.data.intake.profile.objective === '' && fetchedPartial.body.data.stale === false);
   const save = { intake: syntheticCofreIntake(), expected_revision: 0, idempotency_key: randomUUID() };

@@ -220,3 +220,11 @@ test('outdated partial remains untouched after a newer final version', async () 
   await h.ui.load(roster); await h.ui.open(entry); assert.equal(h.ui.stalePartial,true);
   assert.equal(button(h.root,'Salvar progresso'),undefined); assert.ok(h.root.textContent.includes('conciliação'));
 });
+
+test('late partial response after logout cannot restore questionnaire state', async () => {
+  let release;
+  const h = harness(async (path, body) => path==='/cases'?{data:[entry]}:path.endsWith('/partial')&&body?new Promise(resolve=>{release=resolve;}):{data:null});
+  await h.ui.load(roster); await h.ui.open(entry); h.ui.intake=valid(); h.ui.dirty=true;
+  const pending=h.ui.savePartial(); h.ui.clear(); h.setUser(null); release({data:{revision:1,base_revision:0}}); await pending;
+  assert.equal(h.ui.intake,null); assert.equal(h.root.textContent,''); assert.equal(h.ui.partialRevision,0);
+});
