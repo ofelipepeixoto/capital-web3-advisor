@@ -126,44 +126,6 @@ commit;`);
   const liteRead=await result('ana',litePath);
   pass('Lite resumes latest case-bound signals',liteRead.status===200 && liteRead.body.data.revision===2 && liteRead.body.data.intake.signals.guaranteed_return==='unknown');
   pass('Lite hides raw signals from client and foreign staff', (await result('clientA',litePath)).status===404 && (await result('authorB',litePath)).status===404);
-  // V0.2 does not overwrite earlier signals; migration requires explicit acknowledgment.
-  const v02Path='/cofre/cases/'+caseId+'/lite-intake';
-  const controlIds=['backup','vault','apps','spending','testing','watch','recovery','secret_exposure','source','permissions','payload','routine'];
-  const draft02={schema_version:'cofre-lite-intake-0.2',synthetic:true,consents:{assessment:true,storage:true},profile:{experience:'unknown'},controls:Object.fromEntries(controlIds.map(id=>[id,'unknown'])),signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
-  const legacyMarker=await result('ana',v02Path);
-  pass('Lite 0.2 detects earlier signals without importing them',legacyMarker.status===200 && legacyMarker.body.data.legacy_available===true && legacyMarker.body.data.legacy_revision===2);
-  const save02={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:null};
-  pass('Lite 0.2 requires explicit acknowledgment of existing signals',(await result('ana',v02Path,save02)).status===409);
-  const invalid02=fresh(save02);invalid02.intake.profile.experience=null;
-  pass('Lite 0.2 rejects missing profile and denies direct invalid input', (await result('ana',v02Path,invalid02)).status===400 &&
-    (await local('ana','/rest/v1/rpc/advisory_lite_intake_save',{p_case_id:caseId,p_intake:invalid02.intake,p_expected_revision:0,p_idempotency_key:randomUUID(),p_legacy_revision:2})).status===400);
-  pass('Lite 0.2 denies client and foreign analyst',(await result('clientA',v02Path)).status===404 && (await result('authorB',v02Path)).status===404);
-  save02.legacy_revision=2;
-  const retry02=await Promise.all([result('ana',v02Path,save02),result('ana',v02Path,save02)]);
-  pass('Lite 0.2 consented explicit transition retries safely',retry02.every(r=>r.status===200 && r.body.data.revision===1));
-  const read02=await result('ana',v02Path), old01=await result('ana',litePath);
-  pass('Lite 0.2 retains unknown and legacy signals are never overwritten',read02.status===200 && read02.body.data.intake.controls.vault==='unknown' && old01.status===200 && old01.body.data.revision===2);
-  const staleLegacy={...liteSave,expected_revision:2,idempotency_key:randomUUID()};
-  pass('Lite legacy is read-only after transition; exact old retries still work',(await result('ana',litePath,staleLegacy)).status===409 && (await result('ana',litePath,liteSave)).body.data.revision===1);
-  const second02={...save02,expected_revision:1,legacy_revision:null,idempotency_key:randomUUID()};
-  const rival02=fresh(second02);rival02.idempotency_key=randomUUID();rival02.intake.controls.backup='yes';
-  const race02=await Promise.all([result('ana',v02Path,second02),result('ana',v02Path,rival02)]);
-  pass('Lite 0.2 simultaneous edits have one conflict',race02.map(r=>r.status).sort().join(',')==='200,409');
-  // An old tab and an explicit migration cannot commit conflicting sources.
-  const otherCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
-  const migrationCase=otherCreated.body.data?.case_id;
-  requireCondition(UUID.test(migrationCase),'transition race case exists');
-  const oldPath='/cofre/cases/'+migrationCase+'/lite-signals', newPath='/cofre/cases/'+migrationCase+'/lite-intake';
-  const baselineLegacy={intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
-  requireCondition((await result('ana',oldPath,baselineLegacy)).status===200,'transition race has initial legacy signals');
-  const legacyUpdate={intake:{...liteDraft,signals:{...liteDraft.signals,urgency:'yes'}},expected_revision:1,idempotency_key:randomUUID()};
-  const newIntake={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:1};
-  const transition=await Promise.all([result('ana',oldPath,legacyUpdate),result('ana',newPath,newIntake)]);
-  pass('Lite concurrent legacy write and transition never both commit',transition.map(r=>r.status).sort().join(',')==='200,409');
-  const checkTransition=await result('ana',newPath);
-  pass('Lite transition race leaves visible version or updated legacy marker',checkTransition.status===200 &&
-    (transition[1].status===200 ? checkTransition.body.data.revision===1 : checkTransition.body.data.legacy_revision===2));
-
   // A write holding the feature's shared row lock must finish before an operator
   // can commit disabling it. Actual local psql sessions; no credentials logged.
   const claims = JSON.parse(Buffer.from(users.ana.token.split('.')[1], 'base64url').toString('utf8'));
@@ -226,6 +188,45 @@ select pg_sleep(4); commit;`);
     pass('Lite rechecks analyst membership after waiting for the case lock',(await delayed).status===404);
   } finally { if(caseHolder.exitCode===null)caseHolder.kill(); }
   await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst';`);
+
+
+  // V0.2 does not overwrite earlier signals; migration requires explicit acknowledgment.
+  const v02Path='/cofre/cases/'+caseId+'/lite-intake';
+  const controlIds=['backup','vault','apps','spending','testing','watch','recovery','secret_exposure','source','permissions','payload','routine'];
+  const draft02={schema_version:'cofre-lite-intake-0.2',synthetic:true,consents:{assessment:true,storage:true},profile:{experience:'unknown'},controls:Object.fromEntries(controlIds.map(id=>[id,'unknown'])),signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
+  const legacyMarker=await result('ana',v02Path);
+  pass('Lite 0.2 detects earlier signals without importing them',legacyMarker.status===200 && legacyMarker.body.data.legacy_available===true && legacyMarker.body.data.legacy_revision===3);
+  const save02={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:null};
+  pass('Lite 0.2 requires explicit acknowledgment of existing signals',(await result('ana',v02Path,save02)).status===409);
+  const invalid02=fresh(save02);invalid02.intake.profile.experience=null;
+  pass('Lite 0.2 rejects missing profile and denies direct invalid input', (await result('ana',v02Path,invalid02)).status===400 &&
+    (await local('ana','/rest/v1/rpc/advisory_lite_intake_save',{p_case_id:caseId,p_intake:invalid02.intake,p_expected_revision:0,p_idempotency_key:randomUUID(),p_legacy_revision:3})).status===400);
+  pass('Lite 0.2 denies client and foreign analyst',(await result('clientA',v02Path)).status===404 && (await result('authorB',v02Path)).status===404);
+  save02.legacy_revision=3;
+  const retry02=await Promise.all([result('ana',v02Path,save02),result('ana',v02Path,save02)]);
+  pass('Lite 0.2 consented explicit transition retries safely',retry02.every(r=>r.status===200 && r.body.data.revision===1));
+  const read02=await result('ana',v02Path), old01=await result('ana',litePath);
+  pass('Lite 0.2 retains unknown and legacy signals are never overwritten',read02.status===200 && read02.body.data.intake.controls.vault==='unknown' && old01.status===200 && old01.body.data.revision===3);
+  const staleLegacy={...liteSave,expected_revision:3,idempotency_key:randomUUID()};
+  pass('Lite legacy is read-only after transition; exact old retries still work',(await result('ana',litePath,staleLegacy)).status===409 && (await result('ana',litePath,liteSave)).body.data.revision===1);
+  const second02={...save02,expected_revision:1,legacy_revision:null,idempotency_key:randomUUID()};
+  const rival02=fresh(second02);rival02.idempotency_key=randomUUID();rival02.intake.controls.backup='yes';
+  const race02=await Promise.all([result('ana',v02Path,second02),result('ana',v02Path,rival02)]);
+  pass('Lite 0.2 simultaneous edits have one conflict',race02.map(r=>r.status).sort().join(',')==='200,409');
+  // An old tab and an explicit migration cannot commit conflicting sources.
+  const otherCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
+  const migrationCase=otherCreated.body.data?.case_id;
+  requireCondition(UUID.test(migrationCase),'transition race case exists');
+  const oldPath='/cofre/cases/'+migrationCase+'/lite-signals', newPath='/cofre/cases/'+migrationCase+'/lite-intake';
+  const baselineLegacy={intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
+  requireCondition((await result('ana',oldPath,baselineLegacy)).status===200,'transition race has initial legacy signals');
+  const legacyUpdate={intake:{...liteDraft,signals:{...liteDraft.signals,urgency:'yes'}},expected_revision:1,idempotency_key:randomUUID()};
+  const newIntake={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:1};
+  const transition=await Promise.all([result('ana',oldPath,legacyUpdate),result('ana',newPath,newIntake)]);
+  pass('Lite concurrent legacy write and transition never both commit',transition.map(r=>r.status).sort().join(',')==='200,409');
+  const checkTransition=await result('ana',newPath);
+  pass('Lite transition race leaves visible version or updated legacy marker',checkTransition.status===200 &&
+    (transition[1].status===200 ? checkTransition.body.data.revision===1 : checkTransition.body.data.legacy_revision===2));
 
 
   const intakePath = '/cofre/cases/' + caseId + '/intake';
