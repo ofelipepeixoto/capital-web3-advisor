@@ -4,7 +4,7 @@
 import { SIGNAL_IDS, assessSignals } from './cofre-lite-signals.mjs';
 
 export const LITE_CONTROL_IDS = Object.freeze(['backup', 'vault', 'apps', 'spending', 'testing', 'watch', 'recovery', 'secret_exposure', 'source', 'permissions', 'payload', 'routine']);
-const CONTROL_DETAILS = Object.freeze({
+export const CONTROL_DETAILS = Object.freeze({
   backup: ['Backup', 'Revise a existência e proteção do backup com o titular, sem solicitar seu conteúdo.'],
   vault: ['Função de reserva', 'Revise uma separação proporcional entre reserva e uso.'],
   apps: ['Função para aplicativos', 'Revise uma função apropriada para uso de aplicativos.'],
@@ -18,7 +18,7 @@ const CONTROL_DETAILS = Object.freeze({
   payload: ['Compreensão da assinatura', 'Interrompa se o efeito da assinatura não estiver claro e peça revisão.'],
   routine: ['Rotina de revisão', 'Combine uma rotina de revisão e responsáveis. Este portal não monitora automaticamente.'],
 });
-const SIGNAL_LABELS = Object.freeze({ urgency: 'Pressão de urgência', guaranteed_return: 'Promessa de retorno garantido',
+export const SIGNAL_LABELS = Object.freeze({ urgency: 'Pressão de urgência', guaranteed_return: 'Promessa de retorno garantido',
   unsolicited_link: 'Link não solicitado', different_domain: 'Domínio diferente', unverified_contract: 'Contrato não verificado',
   unlimited_approval: 'Permissão ilimitada', secret_request: 'Pedido de segredo', missing_team_docs: 'Documentação insuficiente',
   unclear_tokenomics: 'Regras de token pouco claras', profit_screenshots: 'Prints ou depoimentos de lucro' });

@@ -121,6 +121,72 @@ export function renderCofreReport(content, { staff = false } = {}) {
   return box;
 }
 
+
+const LITE_CONTROL_LABELS = Object.freeze({ backup:'Backup', vault:'Função de reserva', apps:'Função para aplicativos', spending:'Função para gastos', testing:'Função de teste', watch:'Função de observação', recovery:'Recuperação', secret_exposure:'Exposição de segredo', source:'Conferência de origem', permissions:'Revisão de permissões', payload:'Compreensão da assinatura', routine:'Rotina de revisão' });
+const LITE_SIGNAL_LABELS = Object.freeze({ urgency:'Pressão de urgência', guaranteed_return:'Promessa de retorno garantido', unsolicited_link:'Link não solicitado', different_domain:'Domínio diferente', unverified_contract:'Contrato não verificado', unlimited_approval:'Permissão ilimitada', secret_request:'Pedido de segredo', missing_team_docs:'Documentação insuficiente', unclear_tokenomics:'Regras do token pouco claras', profit_screenshots:'Prints ou depoimentos de lucro' });
+const liteLabel = (map, key, fallback) => typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : fallback;
+const LITE_VALUE_LABELS = Object.freeze({ yes:'Sim', no:'Não', unknown:'Não informado', not_applicable:'Não se aplica', declared:'Declarado', beginner:'Está começando', some:'Já usou carteira própria', critical:'Crítico', attention:'Atenção', review:'Revisar', blocked:'Interromper e pedir apoio', incomplete:'Faltam informações', requires_review:'Respostas completas; aguardam revisão' });
+function liteGap(key) {
+  if (key === 'profile.experience') return 'Experiência não informada';
+  if (key === 'signals.applicability') return 'Aplicabilidade dos sinais ainda não definida';
+  if (typeof key !== 'string') return 'Lacuna não identificada';
+  if (key.startsWith('controls.')) return liteLabel(LITE_CONTROL_LABELS, key.slice(9), 'Controle não identificado') + ' não informado';
+  if (key.startsWith('signals.')) return liteLabel(LITE_SIGNAL_LABELS, key.slice(8), 'Sinal não identificado') + ' não informado';
+  return 'Lacuna não identificada';
+}
+/** Content is untrusted; review/publication state must come from the server envelope. */
+export function renderLiteReport(content) {
+  content = content && typeof content === 'object' && !Array.isArray(content) ? content : {};
+  const box = node('section', '', 'cofre-report');
+  box.append(node('p', 'COFRE Lite · cenário fictício', 'notice'),
+    node('h3', liteLabel(LITE_VALUE_LABELS, content.status, 'Estado não informado')),
+    node('p', 'As respostas são declarações e não comprovam segurança. A pontuação permanece indisponível.', 'muted'));
+  const context = node('section'); context.append(node('h3', 'Contexto'), datum('Experiência', liteLabel(LITE_VALUE_LABELS, content.profile?.experience, 'Não informada'))); box.append(context);
+  const controls = node('section'); controls.append(node('h3', 'Controles e evidências'));
+  const rows = Array.isArray(content.controls) ? content.controls : [];
+  if (!rows.length) controls.append(node('p', 'Nenhum controle informado nesta versão.'));
+  for (const item of rows) {
+    const block = node('section', '', 'finding');
+    block.append(node('h4', liteLabel(LITE_CONTROL_LABELS, item?.id, 'Controle não identificado')),
+      datum('Resposta', liteLabel(LITE_VALUE_LABELS, item?.answer, 'Não informada')),
+      datum('Evidência', liteLabel(LITE_VALUE_LABELS, item?.evidence, 'Não informada')),
+      node('p', 'Declarações não são verificação independente.', 'muted'));
+    controls.append(block);
+  }
+  box.append(controls);
+  const signals = node('section'); signals.append(node('h3', 'Sinais de prevenção'));
+  const answers = content.signals?.answers;
+  if (!answers || typeof answers !== 'object' || Array.isArray(answers)) signals.append(node('p', 'Sinais não informados nesta versão.'));
+  else {
+    const list = node('ul');
+    for (const [id, title] of Object.entries(LITE_SIGNAL_LABELS)) list.append(node('li', title + ': ' + liteLabel(LITE_VALUE_LABELS, answers[id], 'Não informado')));
+    signals.append(list);
+  }
+  const assessmentLabels = Object.freeze({ blocked: 'Interromper e pedir apoio', pause_and_investigate: 'Pausar e investigar', review_signals: 'Revisar os sinais', incomplete: 'Avaliação incompleta', no_signal_reported: 'Nenhum sinal de alerta relatado' });
+  signals.append(datum('Avaliação declarada', liteLabel(assessmentLabels, content.signals?.assessment?.status, 'Não informada')));
+  box.append(signals);
+  const findings = node('section'); findings.append(node('h3', 'Pontos que precisam de atenção'));
+  const issues = Array.isArray(content.findings) ? content.findings : [];
+  if (!issues.length) findings.append(node('p', 'Nenhum ponto registrado. Isso não certifica segurança.'));
+  for (const issue of issues) {
+    const block = node('section', '', 'finding' + (issue?.severity === 'critical' ? ' critical' : ''));
+    block.append(node('h4', liteLabel(LITE_VALUE_LABELS, issue?.severity, 'Atenção')),
+      datum('Evidência', issue?.evidence), datum('Possível impacto', issue?.impact), datum('Ação proposta', issue?.action)); findings.append(block);
+  }
+  box.append(findings);
+  const gaps = node('section'); gaps.append(node('h3', 'Informações que faltam'));
+  const missing = Array.isArray(content.gaps) ? content.gaps : [];
+  if (!missing.length) gaps.append(node('p', 'Nenhuma lacuna registrada nesta versão.'));
+  else { const list = node('ul'); for (const item of missing) list.append(node('li', liteGap(item))); gaps.append(list); }
+  box.append(gaps);
+  const plan = node('section'); plan.append(node('h3', 'Plano para revisão'));
+  const steps = Array.isArray(content.plan) ? content.plan : [];
+  if (!steps.length) plan.append(node('p', 'Plano não informado nesta versão.'));
+  else { const list = node('ol'); for (const item of steps) { const li = node('li', '', 'plan-item'); li.append(datum('Prioridade', liteLabel(LITE_VALUE_LABELS, item?.priority, 'Não informada')), datum('Ação', item?.action)); list.append(li); } plan.append(list); }
+  box.append(plan, textList('Limites deste diagnóstico', content.limitations), node('p', 'Revisão e publicação são verificadas pelo serviço para esta versão; o texto do documento não aprova nem entrega o diagnóstico.', 'muted'));
+  return box;
+}
+
 const STEPS = ['Consentimento', 'Objetivos', 'Horizonte e perdas', 'Recuperação', 'Uso e dispositivos', 'Sites e permissões', 'Inventário', 'Revisar e gerar'];
 export class CofreWorkspace {
   constructor({ root, api, currentSession, notice, onSaved, onCreated = async () => {}, partialEnabled = () => false }) {
