@@ -131,6 +131,18 @@ select pg_temp.require((pg_temp.data('partial')->>'revision')::integer=1,'partia
 select pg_temp.require(capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
  jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091')=pg_temp.data('partial'),'partial retry is idempotent');
 select pg_temp.require(capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)#>>'{intake,profile,objective}'='', 'partial preserves empty objective');
+-- Preserve old idempotency even at capacity; no auto-delete or payload retention.
+reset role;
+update capital_web3_private.cofre_partial_limits set max_receipts_per_actor=1 where singleton=true;
+select pg_temp.require(not exists(select 1 from information_schema.columns where table_schema='capital_web3_private' and table_name='cofre_partial_receipts' and column_name='request'),'partial receipts never store request payload');
+set local role authenticated;
+select pg_temp.require(capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
+ jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091')=pg_temp.data('partial'),'partial retry remains available at quota');
+select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
+ pg_temp.data('intake'),1,0,'73000000-0000-0000-0000-000000000093')$q$,'P0001','new partial operation fails closed at quota');
+reset role;
+update capital_web3_private.cofre_partial_limits set max_receipts_per_actor=1000 where singleton=true;
+set local role authenticated;
 insert into cofre_test_data values('saved',capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000006'));
 select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
@@ -149,6 +161,13 @@ select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((p
  pg_temp.data('intake'),jsonb_set(jsonb_set(jsonb_set(pg_temp.data('content'),'{as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,0,as_of}','"2000-01-01T00:00:00.000Z"'),'{sources,1,as_of}','"2000-01-01T00:00:00.000Z"'),1,'73000000-0000-0000-0000-000000000090')$q$,
  '22023','new write with expired report timestamp denied');
 select pg_temp.require((select count(*)=1 from capital_web3.cofre_intakes where case_id=(pg_temp.data('case')->>'case_id')::uuid),'assigned analyst can read intake');
+select pg_temp.require((capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)->>'stale')::boolean,'partial becomes stale after report');
+insert into cofre_test_data values('restore',capital_web3.advisory_cofre_partial_restore((pg_temp.data('case')->>'case_id')::uuid,1,1,'73000000-0000-0000-0000-000000000094'));
+select pg_temp.require((pg_temp.data('restore')->>'revision')::integer=2,'explicit restore advances revision');
+select pg_temp.require(capital_web3.advisory_cofre_partial_restore((pg_temp.data('case')->>'case_id')::uuid,1,1,'73000000-0000-0000-0000-000000000094')=pg_temp.data('restore'),'restore retry is idempotent');
+select pg_temp.require(capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)#>>'{intake,profile,objective}'='', 'restore preserves original partial answers');
+select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_restore((pg_temp.data('case')->>'case_id')::uuid,1,1,'73000000-0000-0000-0000-000000000095')$q$,'23514','stale restore revision cannot replay with another key');
+
 select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000007')$q$,'23514','stale revision cannot overwrite newer intake');
 select pg_temp.expect_error($q$select capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,

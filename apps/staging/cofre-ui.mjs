@@ -123,12 +123,12 @@ export function renderCofreReport(content, { staff = false } = {}) {
 
 const STEPS = ['Consentimento', 'Objetivos', 'Horizonte e perdas', 'Recuperação', 'Uso e dispositivos', 'Sites e permissões', 'Inventário', 'Revisar e gerar'];
 export class CofreWorkspace {
-  constructor({ root, api, currentSession, notice, onSaved, onCreated = async () => {} }) {
-    Object.assign(this, { root, api, currentSession, notice, onSaved, onCreated }); this.clear();
+  constructor({ root, api, currentSession, notice, onSaved, onCreated = async () => {}, partialEnabled = () => false }) {
+    Object.assign(this, { root, api, currentSession, notice, onSaved, onCreated, partialEnabled }); this.clear();
   }
   clear() {
     this.epoch = (this.epoch || 0) + 1; this.caseEpoch = (this.caseEpoch || 0) + 1;
-    this.roster = []; this.cases = []; this.active = null; this.intake = null; this.revision = 0; this.partialRevision = 0; this.stalePartial = false;
+    this.roster = []; this.cases = []; this.active = null; this.intake = null; this.revision = 0; this.partialRevision = 0; this.stalePartial = false; this.previousPartial = null; this.finalSnapshot = null;
     this.step = 0; this.furthestStep = 0; this.inventoryIndex = 0; this.pending = false; this.dirty = false; this.keys = new Map(); this.root.replaceChildren();
     this.root.setAttribute('aria-busy', 'false');
   }
@@ -252,17 +252,17 @@ export class CofreWorkspace {
       if (epoch !== this.epoch || caseEpoch !== this.caseEpoch || !this.currentSession()) return;
       const row = result.data;
       if (row && (!Number.isInteger(row.revision) || row.revision < 1 || row.intake?.schema_version !== 'cofre-intake-0.1')) throw new Error('As respostas salvas não estão no formato esperado. Peça à equipe para conferir.');
-      this.revision = row?.revision || 0; this.intake = row ? clone(row.intake) : emptyCofreIntake(); this.partialRevision = 0; this.stalePartial = false;
+      this.revision = row?.revision || 0; this.intake = row ? clone(row.intake) : emptyCofreIntake(); this.partialRevision = 0; this.stalePartial = false; this.previousPartial = null; this.finalSnapshot = row ? clone(row.intake) : null;
       const user = this.currentSession();
       const canEdit = this.roster.some(item => item.user_id === user?.user_id && item.member_role === 'analyst') && user?.assignments?.some(item => item.case_id === entry.id && ['analyst','admin'].includes(item.staff_role));
-      if (canEdit) {
+      if (canEdit && this.partialEnabled()) {
         const partial = await this.api('/cofre/cases/' + entry.id + '/partial');
         if (epoch !== this.epoch || caseEpoch !== this.caseEpoch || !this.currentSession()) return;
         if (partial.data) {
           if (!Number.isInteger(partial.data.revision) || partial.data.revision<1 || typeof partial.data.stale !== 'boolean' || partial.data.intake?.schema_version !== 'cofre-intake-0.1') throw new Error('Rascunho parcial inválido. Peça apoio à equipe.');
           this.partialRevision = partial.data.revision; this.stalePartial = partial.data.stale;
           if (!partial.data.stale) { this.intake = clone(partial.data.intake); this.notice('Respostas parciais retomadas. Confira as etapas antes de gerar o diagnóstico.'); }
-          else this.notice('Existe um rascunho parcial anterior a outra versão. Ele não foi substituído; peça apoio à equipe para conciliá-lo.');
+          else { this.previousPartial = clone(partial.data.intake); this.notice('Existe um progresso anterior a outra versão. Compare as respostas antes de decidir.'); }
         }
       }
       this.step = 0; this.furthestStep = 0; this.render(); this.focusHeading();
@@ -287,7 +287,7 @@ export class CofreWorkspace {
     const oldError = this.root.querySelector('.cofre-error'); if (oldError) { oldError.hidden = true; oldError.textContent = ''; }
     this.furthestStep = Math.max(this.furthestStep, this.step);
     const title = node('h3', this.active.client_safe_title || 'COFRE Individual'), heading = node('h4', `Etapa ${this.step + 1} de ${STEPS.length} · ${STEPS[this.step]}`, 'step-heading'); heading.tabIndex = -1;
-    panel.append(title, node('p', this.dirty ? 'Alterações não salvas · conclua as etapas e gere o rascunho antes de sair.' : this.partialRevision && !this.stalePartial ? 'Progresso parcial salvo. Alterações posteriores precisam ser salvas novamente.' : this.revision ? `Respostas salvas · revisão ${this.revision}. Alterações geram uma nova versão para revisão humana.` : 'Novo atendimento · salve o progresso depois de consentir para poder retomá-lo.', 'muted save-status'));
+    panel.append(title, node('p', this.dirty ? 'Alterações não salvas · conclua as etapas e gere o rascunho antes de sair.' : this.partialRevision && !this.stalePartial ? 'Progresso parcial salvo. Alterações posteriores precisam ser salvas novamente.' : this.revision ? `Respostas salvas · revisão ${this.revision}. Alterações geram uma nova versão para revisão humana.` : (this.partialEnabled() ? 'Novo atendimento · salve o progresso depois de consentir para poder retomá-lo.' : 'Novo atendimento · as respostas ficam nesta sessão até gerar o rascunho.'), 'muted save-status'));
     const steps = node('nav', '', 'step-navigation'); steps.setAttribute('aria-label', 'Etapas do atendimento');
     STEPS.forEach((label, index) => {
       const item = this.action(`${index + 1}. ${label}`, () => { this.step = index; this.renderEditor(); this.focusHeading(); });
@@ -357,8 +357,28 @@ export class CofreWorkspace {
     panel.append(form);
     if (!canEdit) for (const input of form.querySelectorAll('input, select')) input.disabled = true;
     const actions = node('div', '', 'actions');
-    if (canEdit && intake.consents.assessment && intake.consents.storage && !this.stalePartial) actions.append(this.action('Salvar progresso', () => this.savePartial()));
-    if (this.stalePartial) panel.append(node('p', 'O progresso anterior precisa de conciliação antes de ser substituído. Peça apoio à equipe.', 'notice'));
+    if (canEdit && this.partialEnabled() && intake.consents.assessment && intake.consents.storage && !this.stalePartial) actions.append(this.action('Salvar progresso', () => this.savePartial()));
+    if (this.stalePartial && this.previousPartial) {
+      const section = node('section', '', 'boundary');
+      section.append(node('h4', 'Comparar progresso anterior e versão salva'),
+        node('p', 'Uma nova versão de diagnóstico foi criada depois do seu progresso parcial. Retomar as respostas antigas não altera nem aprova a versão salva. Você deverá conferir e gerar outra versão para revisão.'));
+      const compare = node('details'); compare.append(node('summary', 'Comparar as respostas'));
+      for (const [label, value] of [['Versão salva', this.finalSnapshot], ['Progresso anterior', this.previousPartial]]) {
+        const group = node('section'); group.append(node('h5', label));
+        for (const [key, title] of [['objective', 'Objetivo'], ['experience', 'Experiência'], ['liquidity', 'Liquidez'], ['loss_capacity', 'Efeito de perda']]) group.append(datum(title, labelFor(value.profile[key])));
+        group.append(node('p', `Autorizações: avaliação ${value.consents.assessment ? 'sim' : 'não'} · armazenamento ${value.consents.storage ? 'sim' : 'não'}`));
+        const controls = node('ul'); for (const [id,title] of CONTROL_QUESTIONS) controls.append(node('li', `${title}: ${labelFor(value.controls[id].answer)} · ${labelFor(value.controls[id].evidence)}`)); group.append(controls);
+        const inventory = node('ul'); for (const [index,item] of value.inventory.entries()) inventory.append(node('li', `Item ${index+1}: ${labelFor(item.category)} · ${labelFor(item.network)} · ${labelFor(item.custody)}`));
+        if (!value.inventory.length) group.append(node('p', 'Nenhuma categoria informada.')); else group.append(inventory);
+        compare.append(group);
+      }
+      section.append(compare, this.action('Retomar respostas parciais anteriores', () => this.restorePartial()));
+      section.append(this.action('Recarregar atendimento', () => {
+        if (this.dirty && !window.confirm('As alterações não salvas desta tela serão descartadas. Recarregar?')) return;
+        return this.open(this.active, { discard: true });
+      }));
+      panel.append(section);
+    }
     if (this.step > 0) actions.append(this.action('Voltar', () => { this.step--; this.renderEditor(); this.focusHeading(); }));
     if (this.step < STEPS.length - 1 || canEdit) actions.append(this.action(this.step === STEPS.length - 1 ? 'Salvar respostas e gerar rascunho' : 'Continuar', async () => {
       if (this.step === 0 && (!intake.consents.assessment || !intake.consents.storage)) { this.error('Marque as duas autorizações para continuar ou saia sem salvar.'); return; }
@@ -371,6 +391,18 @@ export class CofreWorkspace {
       await this.save();
     }, 'primary'));
     panel.append(actions);
+  }
+  async restorePartial() {
+    if (!this.stalePartial || !this.previousPartial) throw new Error('Não há progresso anterior para retomar.');
+    if (this.dirty) throw new Error('Há alterações nesta tela. Reabra o atendimento e descarte-as explicitamente antes de retomar o progresso anterior.');
+    const epoch=this.epoch, caseEpoch=this.caseEpoch, caseId=this.active.id;
+    const path='/cofre/cases/'+caseId+'/partial/restore', body={expected_revision:this.partialRevision,base_revision:this.revision};
+    const result=await this.api(path,{...body,idempotency_key:this.key(path,body)});
+    if(epoch!==this.epoch || caseEpoch!==this.caseEpoch || !this.currentSession()) return;
+    if(!Number.isInteger(result.data?.revision) || result.data.revision!==this.partialRevision+1 || result.data.base_revision!==this.revision) throw new Error('Não foi possível confirmar a retomada.');
+    this.partialRevision=result.data.revision; this.intake=clone(this.previousPartial); this.previousPartial=null; this.stalePartial=false;
+    this.dirty=false; this.step=0; this.furthestStep=0;
+    this.notice('Respostas anteriores retomadas como progresso. Confira antes de gerar uma nova versão para revisão humana.'); this.renderEditor(); this.focusHeading();
   }
   async savePartial() {
     if (!this.intake.consents.assessment || !this.intake.consents.storage) throw new Error('Marque as duas autorizações antes de salvar.');
@@ -388,6 +420,7 @@ export class CofreWorkspace {
     } finally { if(epoch===this.epoch && caseEpoch===this.caseEpoch) for(const {input,disabled} of inputs) input.disabled=disabled; }
   }
   async save() {
+    if (this.stalePartial) throw new Error('Compare e retome o progresso anterior antes de gerar uma nova versão.');
     if (!this.intake.consents.assessment || !this.intake.consents.storage || !this.intake.profile.objective || !this.intake.profile.experience) throw new Error('Confira os consentimentos, o objetivo e a experiência antes de salvar.');
     const epoch = this.epoch, caseEpoch = this.caseEpoch, caseId = this.active.id;
     const path = '/cofre/cases/' + caseId + '/intake', body = { intake: clone(this.intake), expected_revision: this.revision };

@@ -38,7 +38,7 @@ const valid = () => {
 function harness(api = async path => path === '/cases' ? { data: [entry] } : { data: null }) {
   const root = new Element('section'), notices = [], saved = [];
   let user = { user_id: 'analyst', assignments: [{ case_id: entry.id, staff_role: 'analyst' }] };
-  const ui = new CofreWorkspace({ root, api, currentSession: () => user, notice: text => notices.push(text), onSaved: id => { saved.push(id); } });
+  const ui = new CofreWorkspace({ root, api, partialEnabled: () => true, currentSession: () => user, notice: text => notices.push(text), onSaved: id => { saved.push(id); } });
   return { root, ui, notices, saved, setUser: next => { user = next; } };
 }
 
@@ -218,7 +218,7 @@ test('outdated partial remains untouched after a newer final version', async () 
   const stale={intake:valid(),revision:1,base_revision:0,stale:true};
   const h=harness(async path => path==='/cases'?{data:[entry]}:path.endsWith('/partial')?{data:stale}:{data:{revision:1,intake:valid()}});
   await h.ui.load(roster); await h.ui.open(entry); assert.equal(h.ui.stalePartial,true);
-  assert.equal(button(h.root,'Salvar progresso'),undefined); assert.ok(h.root.textContent.includes('conciliação'));
+  assert.equal(button(h.root,'Salvar progresso'),undefined); assert.ok(h.root.textContent.includes('Comparar progresso anterior e versão salva'));
 });
 
 test('late partial response after logout cannot restore questionnaire state', async () => {
@@ -227,4 +227,40 @@ test('late partial response after logout cannot restore questionnaire state', as
   await h.ui.load(roster); await h.ui.open(entry); h.ui.intake=valid(); h.ui.dirty=true;
   const pending=h.ui.savePartial(); h.ui.clear(); h.setUser(null); release({data:{revision:1,base_revision:0}}); await pending;
   assert.equal(h.ui.intake,null); assert.equal(h.root.textContent,''); assert.equal(h.ui.partialRevision,0);
+});
+
+test('old deployment without partial capability opens existing case without contacting new endpoint', async () => {
+  const calls=[]; const root=new Element('section');
+  const ui=new CofreWorkspace({root,currentSession:()=>({user_id:'analyst',assignments:[{case_id:entry.id,staff_role:'analyst'}]}),
+    api:async path=>{calls.push(path); if(path.endsWith('/partial')) throw Error('endpoint absent'); return path==='/cases'?{data:[entry]}:{data:null};},
+    notice:()=>{},onSaved:()=>{}});
+  await ui.load(roster); await ui.open(entry);
+  assert.equal(ui.active.id,entry.id); assert.equal(ui.intake.schema_version,'cofre-intake-0.1');
+  assert.ok(!calls.some(path=>path.endsWith('/partial'))); assert.equal(button(root,'Salvar progresso'),undefined);
+  assert.ok(root.textContent.includes('ficam nesta sessão'));
+});
+
+test('enabled partial capability fails closed on authorization or service errors', async () => {
+  const h=harness(async path=>{if(path==='/cases')return {data:[entry]}; if(path.endsWith('/partial'))throw Error('Acesso não autorizado'); return {data:null};});
+  await h.ui.load(roster); await h.ui.open(entry);
+  assert.ok(h.root.textContent.includes('Não foi possível abrir este atendimento'));
+  assert.equal(button(h.root,'Salvar progresso'),undefined);
+});
+
+test('stale progress is compared and restored only after an explicit action', async () => {
+  const stale=valid(); stale.profile.objective='protect_family'; const final=valid(); final.profile.objective='organize'; let requests=[];
+  const h=harness(async (path,body)=>{requests.push({path,body}); if(path==='/cases')return {data:[entry]}; if(path.endsWith('/partial/restore'))return {data:{revision:3,base_revision:1}}; if(path.endsWith('/partial'))return {data:{intake:stale,revision:2,base_revision:0,stale:true}}; return {data:{revision:1,intake:final}};});
+  await h.ui.load(roster); await h.ui.open(entry);
+  assert.equal(h.ui.intake.profile.objective,'organize'); assert.equal(h.ui.previousPartial.profile.objective,'protect_family');
+  assert.ok(h.root.textContent.includes('Versão salva')); assert.ok(h.root.textContent.includes('Progresso anterior'));
+  assert.equal(requests.filter(x=>x.body).length,0); await button(h.root,'Retomar respostas parciais anteriores').click();
+  assert.equal(h.ui.intake.profile.objective,'protect_family'); assert.equal(h.ui.partialRevision,3); assert.equal(h.ui.stalePartial,false);
+  assert.equal(requests.filter(x=>x.body).length,1); assert.equal(h.saved.length,0);
+});
+
+test('stale restore never discards unsaved edits or accepts failed request', async () => {
+  const h=harness(async path=>path==='/cases'?{data:[entry]}:path.endsWith('/partial')?{data:{intake:valid(),revision:1,base_revision:0,stale:true}}:path.endsWith('/partial/restore')?Promise.reject(Error('conflito')):{data:{revision:1,intake:valid()}});
+  await h.ui.load(roster); await h.ui.open(entry); h.ui.dirty=true;
+  await button(h.root,'Retomar respostas parciais anteriores').click(); assert.equal(h.ui.stalePartial,true); assert.ok(h.root.textContent.includes('alterações nesta tela'));
+  h.ui.dirty=false; await button(h.root,'Retomar respostas parciais anteriores').click(); assert.equal(h.ui.stalePartial,true); assert.ok(h.root.textContent.includes('conflito'));
 });

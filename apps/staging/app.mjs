@@ -8,6 +8,7 @@ const $ = id => document.getElementById(id);
 let client, session, reports = [], publications = [], generation = 0, detailGeneration = 0;
 let busy = false;
 let roster = [], activeView = 'diagnostics', cofre, authUI;
+let partialCapability = false;
 const lite = new LiteSimulation($('lite-workspace'));
 let accessLink = null, accessLinkError = false;
 // Remove Auth fragments before configuration requests or rendering any account data.
@@ -44,7 +45,7 @@ function reportNavigation(panel, body) {
 }
 function clearWorkspace() {
   ++generation; ++detailGeneration; session = null; reports = []; publications = []; requestKeys.clear();
-  roster = []; activeView = 'diagnostics'; cofre?.clear(); lite.clear();
+  roster = []; activeView = 'diagnostics'; partialCapability = false; cofre?.clear(); lite.clear();
   authUI?.clear();
   $('workspace').hidden = true; $('login-panel').hidden = false; $('logout').hidden = true;
   $('identity').textContent = ''; $('reports').replaceChildren(); $('detail').replaceChildren();
@@ -72,6 +73,7 @@ async function refresh() {
   $('reports').replaceChildren(); reports = []; publications = [];
   const access = await client.api('/access-requirements');
   if (epoch !== generation || !session) return;
+  partialCapability = access.partial_intake_enabled === true;
   if (access.mfa_required && access.assurance_level !== 'aal2') {
     $('workspace').hidden = true; $('login-panel').hidden = true;
     await authUI.startMfa(); return;
@@ -247,7 +249,7 @@ function showView(view, focus = false) {
   $('lite-tab').setAttribute('aria-current', view === 'lite' ? 'page' : 'false');
   if (focus) $({journeys:'journeys-heading',cases:'cases-heading',lite:'lite-heading',diagnostics:'reports-heading'}[view]).focus();
 }
-cofre = new CofreWorkspace({ root: $('cofre-workspace'), api: (path, body) => client.api(path, body),
+cofre = new CofreWorkspace({ root: $('cofre-workspace'), partialEnabled: () => partialCapability, api: (path, body) => client.api(path, body),
   currentSession: () => session, notice: message,
   onCreated: async () => { const epoch = generation, current = await client.api('/session'); if (epoch === generation && session && current.user_id === session.user_id) session = current; },
   onSaved: async reportId => { await refresh(); if (!session) return; showView('diagnostics'); const report = reports.find(row => row.id === reportId); if (report) await openReport(report); },
@@ -284,6 +286,7 @@ $('login-form').addEventListener('submit', async event => {
   finally { busy = false; $('login').disabled = false; $('login').textContent = 'Entrar'; }
 });
 $('logout').addEventListener('click', async () => {
+  if (cofre?.pending) { message('Aguarde o resultado da operação atual antes de sair. Se a conexão falhar, confira o atendimento salvo antes de repetir.'); return; }
   if ((cofre?.dirty || lite.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }
   catch { message('Acesso local encerrado. O servidor não confirmou a saída; tente novamente ao recuperar a conexão.'); }
