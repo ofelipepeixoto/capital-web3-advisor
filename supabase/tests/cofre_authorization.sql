@@ -121,6 +121,12 @@ insert into cofre_test_data values('case',capital_web3.advisory_create_cofre_cas
  '83000000-0000-0000-0000-000000000001','13000000-0000-0000-0000-000000000001','73000000-0000-0000-0000-000000000005'));
 select pg_temp.require(capital_web3.advisory_create_cofre_case('83000000-0000-0000-0000-000000000001',
  '13000000-0000-0000-0000-000000000001','73000000-0000-0000-0000-000000000005')=pg_temp.data('case'),'case creation retry returns original case');
+insert into cofre_test_data values('partial',capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
+ jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091'));
+select pg_temp.require((pg_temp.data('partial')->>'revision')::integer=1,'partial save stores one revision');
+select pg_temp.require(capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,
+ jsonb_set(pg_temp.data('intake'),'{profile,objective}','""'::jsonb),0,0,'73000000-0000-0000-0000-000000000091')=pg_temp.data('partial'),'partial retry is idempotent');
+select pg_temp.require(capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)#>>'{intake,profile,objective}'='', 'partial preserves empty objective');
 insert into cofre_test_data values('saved',capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
  pg_temp.data('intake'),pg_temp.data('content'),0,'73000000-0000-0000-0000-000000000006'));
 select pg_temp.require(capital_web3.advisory_save_cofre_intake((pg_temp.data('case')->>'case_id')::uuid,
@@ -245,6 +251,12 @@ set local role authenticated;
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001','aal1');
 select pg_temp.require((select count(*)=0 from capital_web3.advisory_report_versions where id=(pg_temp.data('saved')->>'report_version_id')::uuid),'client JWT with removed session cannot read previously published content');
 select pg_temp.expect_error($q$select capital_web3.advisory_record_receipt((pg_temp.data('publication')->>'publication_id')::uuid)$q$,'42501','receipt replay denies removed client session');
+reset role;
+delete from auth.sessions where id='93000000-0000-0000-0000-000000000010';
+set local role authenticated;
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010','aal1');
+select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','revoked analyst session cannot read partial');
+select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),1,1,'73000000-0000-0000-0000-000000000092')$q$,'42501','revoked analyst session cannot write partial');
 reset role;
 select pg_temp.require((select count(*)=1 from capital_web3.cofre_intakes where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no partial intake version');
 select pg_temp.require((select count(*)=1 from capital_web3.advisory_report_versions where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no extra report version');

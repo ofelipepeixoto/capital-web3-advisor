@@ -124,6 +124,8 @@ jobs:
             sleep 1
             cp "$migration" supabase/migrations/*_"$name".sql
           done
+          supabase migration new cofre_partial_intake
+          cp "$GITHUB_WORKSPACE/supabase/pending/cofre_partial_intake.sql" supabase/migrations/*_cofre_partial_intake.sql
       - name: Start disposable Auth PostgREST Storage database
         run: |
           umask 077
