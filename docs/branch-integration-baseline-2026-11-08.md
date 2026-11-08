@@ -5,19 +5,19 @@ Registro de 08/11/2026 para revisão da base sintética. Este arquivo descreve a
 ## Base atual
 
 - O repositório é público e a branch padrão é `main`. A implementação de homologação se encontra em branches e pull requests ainda não incorporados à `main`.
-- A dependência principal é: [#1](../../pull/1) → [#2](../../pull/2) → [#3](../../pull/3) → [#4](../../pull/4) → [#5](../../pull/5) → [#6](../../pull/6) → [#7](../../pull/7) → [#10](../../pull/10) → [#12](../../pull/12) → [#13](../../pull/13) → [#14](../../pull/14) → [#15](../../pull/15) → [#17](../../pull/17) → [#18](../../pull/18).
-- [#9](../../pull/9) já foi incorporada à base de #7, e [#11](../../pull/11) à base de #10. A [#16](../../pull/16) é irmã de #15, ambas com base em #14: seu conteúdo não está automaticamente presente em #18.
+- A dependência principal é: [#1](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/1) → [#2](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/2) → [#3](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/3) → [#4](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/4) → [#5](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/5) → [#6](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/6) → [#7](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/7) → [#10](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/10) → [#12](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/12) → [#13](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/13) → [#14](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/14) → [#15](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/15) → [#17](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/17) → [#18](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/18).
+- [#9](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/9) já foi incorporada à base de #7, e [#11](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/11) à base de #10. A [#16](https://github.com/ofelipepeixoto/capital-web3-advisor/pull/16) é irmã de #15, ambas com base em #14: seu conteúdo não está automaticamente presente em #18.
 - A #16 adiciona um documento de preparação operacional, um ensaio local de restauração SQLite e uma consulta de prévia de retenção. Eles não são prova de restauração do banco hospedado nem autorizam remoção de dados.
 
 ## Evidências do snapshot
 
 | PR | Head | CI observada | Escopo |
 | --- | --- | --- | --- |
-| #14 | `28a86e76a7b1d30f7bc057e46b0c23fef6404608` | [aprovada](../../actions/runs/39069765493) | COFRE Individual sintético |
-| #15 | `af3d544a2b87741fbcae81900a04665cc1378722` | [aprovada](../../actions/runs/39072425667) | MFA e identidade |
-| #16 | `b1560a29aea74cfeb1c3da069315bad74908c0ac` | [aprovada](../../actions/runs/39070955369) | Evidências e ensaios operacionais |
-| #17 | `8368ebf9254875f6166a3b0d46354ae495cbfe54` | [aprovada](../../actions/runs/39074555222) | Navegação |
-| #18 | `80d8ea7e3c482fade1c824b696c3509b515f91d3` | [aprovada](../../actions/runs/42499158895) | Proteção de saída sem salvar |
+| #14 | `28a86e76a7b1d30f7bc057e46b0c23fef6404608` | [aprovada](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/39069765493) | COFRE Individual sintético |
+| #15 | `af3d544a2b87741fbcae81900a04665cc1378722` | [aprovada](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/39072425667) | MFA e identidade |
+| #16 | `b1560a29aea74cfeb1c3da069315bad74908c0ac` | [aprovada](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/39070955369) | Evidências e ensaios operacionais |
+| #17 | `8368ebf9254875f6166a3b0d46354ae495cbfe54` | [aprovada](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/39074555222) | Navegação |
+| #18 | `80d8ea7e3c482fade1c824b696c3509b515f91d3` | [aprovada](https://github.com/ofelipepeixoto/capital-web3-advisor/actions/runs/42499158895) | Proteção de saída sem salvar |
 
 Estes resultados se aplicam aos respectivos commits e ambientes de teste; não são prova de integração de outras branches, aprovação humana, migração hospedada ou uso por clientes reais. Reconsultar heads, CI e estado das PRs antes de qualquer decisão.
 
