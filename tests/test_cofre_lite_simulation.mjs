@@ -63,3 +63,41 @@ test('browser signal module matches the Edge-local source', async () => {
   const edge = await readFile(new URL('../supabase/functions/advisory-api/cofre-lite-signals.mjs', import.meta.url), 'utf8');
   assert.equal(browser, edge);
 });
+
+test('consented case signals save and resume on a fresh session without persisting other answers', async () => {
+  let stored = null, requests = [];
+  const api = async (path, body) => { requests.push({path,body}); if (!body) return {data:stored}; stored = {revision:(stored?.revision || 0)+1,intake:body.intake}; return {data:{revision:stored.revision}}; };
+  const options = {api, cases:()=>[{id:'case-1',client_safe_title:'Fictício'}], confirm:()=>true};
+  const root = new Element('section'), ui = new LiteSimulation(root,options); ui.caseId='case-1'; await ui.load();
+  ui.answers.urgency='yes'; ui.answers.experience='beginner'; ui.consents.assessment=true; ui.consents.storage=true; ui.dirty=true;
+  await ui.save(); assert.equal(stored.revision,1); assert.equal(stored.intake.signals.urgency,'yes');
+  assert.equal('experience' in stored.intake,false); assert.equal(ui.dirty,true);
+  ui.clear(); const next = new LiteSimulation(new Element('section'),options); next.caseId='case-1'; await next.load();
+  assert.equal(next.answers.urgency,'yes'); assert.equal(next.answers.experience,undefined); assert.equal(next.revision,1);
+  assert.equal(requests.filter(r=>r.body).length,1);
+});
+
+test('disabled feature, conflicts and late responses preserve unsaved session answers', async () => {
+  let mode='off', release; const api = async (path, body) => {
+    if (mode==='off') throw Object.assign(Error('denied'),{status:404});
+    if (mode==='conflict') throw Object.assign(Error('conflict'),{status:409});
+    return new Promise(resolve=>{release=resolve;});
+  };
+  const ui=new LiteSimulation(new Element('section'),{api,cases:()=>[{id:'case-1'}],confirm:()=>true});ui.caseId='case-1';
+  await ui.load(); assert.equal(ui.loaded,false);assert.match(ui.notice,/desabilitada/);
+  ui.loaded=true;ui.consents={assessment:true,storage:true};ui.answers.urgency='yes';ui.dirty=true;mode='conflict';
+  await ui.save();assert.equal(ui.answers.urgency,'yes');assert.equal(ui.dirty,true);assert.match(ui.notice,/Outra revisão/);
+  mode='pending';const pending=ui.load();ui.clear();release({data:null});await pending;
+  assert.equal(ui.caseId,'');assert.deepEqual(ui.answers,{});assert.equal(ui.loaded,false);
+});
+
+
+test('pending load disables inputs and navigation until the server response arrives', async () => {
+  let release; const api = async () => new Promise(resolve => { release = resolve; });
+  const root = new Element('section'), ui = new LiteSimulation(root,{api,cases:()=>[{id:'case-1'}],confirm:()=>true});
+  ui.caseId='case-1'; ui.render(); const pending=ui.load();
+  assert.ok(root.all().filter(item=>item.tagName==='input').every(input=>input.disabled));
+  assert.equal(find(root,'button','Continuar').disabled,true);
+  release({data:null}); await pending;
+  assert.equal(find(root,'button','Continuar').disabled,false);
+});
