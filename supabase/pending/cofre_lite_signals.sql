@@ -2,6 +2,14 @@
 begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
+-- No row or false means disabled; only owner/operator can provision a reviewed workspace.
+create table capital_web3_private.cofre_lite_features (
+ workspace_id uuid primary key references capital_web3_private.cofre_workspaces(id),
+ enabled boolean not null default false
+);
+alter table capital_web3_private.cofre_lite_features enable row level security;
+alter table capital_web3_private.cofre_lite_features force row level security;
+revoke all on capital_web3_private.cofre_lite_features from public,anon,authenticated,service_role;
 create table capital_web3_private.cofre_lite_signals (
  case_id uuid primary key references capital_web3.advisory_cases(id),
  revision integer not null check(revision>0),
@@ -50,7 +58,7 @@ declare v_actor uuid; wid uuid; result jsonb;
 begin
  v_actor:=capital_web3_private.require_human_identity();
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
- if wid is null or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
+ if wid is null or not exists(select 1 from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled) or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  select jsonb_build_object('intake',intake,'revision',revision,'updated_at',updated_at) into result from capital_web3_private.cofre_lite_signals where case_id=p_case_id;
  return result;
 end $$;
@@ -60,7 +68,7 @@ declare v_actor uuid; wid uuid; r integer; v_request_hash text; old capital_web3
 begin
  v_actor:=capital_web3_private.require_human_identity();
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
- if wid is null or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
+ if wid is null or not exists(select 1 from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled) or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  if p_expected_revision is null or p_expected_revision<0 or p_expected_revision>10000 or p_idempotency_key is null then raise exception 'invalid revision' using errcode='22023'; end if;
  perform capital_web3_private.validate_lite_signal_intake(p_intake);
  -- Serialize both the case's revision and the actor's global idempotency quota.

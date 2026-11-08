@@ -89,6 +89,13 @@ commit;`);
   const liteDraft = {schema_version:'cofre-lite-signals-0.1', synthetic:true, consents:{assessment:true,storage:true},
     signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
   const liteSave = {intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
+  const directLite = {p_case_id:caseId,p_intake:liteDraft,p_expected_revision:0,p_idempotency_key:randomUUID()};
+  const offGet=await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId});
+  const offSave=await local('ana','/rest/v1/rpc/advisory_lite_signals_save',directLite);
+  pass('Lite default-off denies direct PostgREST read and write',offGet.status===403 && offSave.status===403);
+  await sql(`insert into capital_web3_private.cofre_lite_features(workspace_id,enabled) values('${workspaceA}',true);`);
+  const onGet=await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId});
+  pass('Lite explicit workspace enable permits assigned analyst direct read',onGet.status===200 && onGet.body===null);
   pass('Lite denies client and foreign analyst', (await result('clientA',litePath,liteSave)).status===404 && (await result('authorB',litePath,liteSave)).status===404);
   const liteNoConsent=fresh(liteSave);liteNoConsent.intake.consents.storage=false;
   pass('Lite rejects absent consent before persistence', (await result('ana',litePath,liteNoConsent)).status===400);

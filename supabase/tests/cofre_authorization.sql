@@ -132,6 +132,12 @@ insert into cofre_test_data values('lite',jsonb_build_object(
  'signals',jsonb_build_object('urgency','unknown','guaranteed_return','unknown','unsolicited_link','unknown',
  'different_domain','unknown','unverified_contract','unknown','unlimited_approval','unknown','secret_request','unknown',
  'missing_team_docs','unknown','unclear_tokenomics','unknown','profit_screenshots','unknown')));
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid)$q$,'42501','Lite off by default denies get');
+select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000100')$q$,'42501','Lite off by default denies direct save');
+reset role;
+insert into capital_web3_private.cofre_lite_features(workspace_id,enabled) values('83000000-0000-0000-0000-000000000001',true);
+set local role authenticated;
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
 select pg_temp.require(capital_web3.advisory_lite_signals_get((pg_temp.data('case')->>'case_id')::uuid) is null,'new case has no Lite signals');
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite')||'{"secret":"do-not-collect"}'::jsonb,0,'73000000-0000-0000-0000-000000000100')$q$,'22023','Lite rejects invented secret field');
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite'),'{consents,storage}','false'),0,'73000000-0000-0000-0000-000000000100')$q$,'22023','Lite requires explicit storage consent');
