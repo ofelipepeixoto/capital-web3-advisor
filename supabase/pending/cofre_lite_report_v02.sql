@@ -107,51 +107,51 @@ create trigger lite_version_immutable before update or delete on capital_web3.ad
 -- enforce reviewer separation and version-bound hashes.
 create function capital_web3.advisory_lite_create_draft(p_case_id uuid,p_expected_revision integer,p_idempotency_key uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare actor uuid; wid uuid; r integer; data jsonb; rid uuid; vid uuid; next_version integer;
+declare v_actor uuid; wid uuid; r integer; data jsonb; rid uuid; vid uuid; next_version integer;
  request_hash text; old capital_web3_private.cofre_lite_report_receipts%rowtype; result jsonb;
  quota integer; retention integer;
 begin
- actor:=capital_web3_private.require_human_identity();
+ v_actor:=capital_web3_private.require_human_identity();
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
  if wid is null or not exists(select 1 from capital_web3_private.cofre_lite_features f where f.workspace_id=wid and f.enabled)
   or not capital_web3_private.cofre_is_staff(wid,array['analyst'])
   or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  if p_expected_revision is null or p_expected_revision<1 or p_idempotency_key is null then raise exception 'invalid revision' using errcode='22023'; end if;
- perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(actor::text||':lite-draft-actor',0));
+ perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text||':lite-draft-actor',0));
  perform 1 from capital_web3.advisory_cases where id=p_case_id for update;
  perform 1 from capital_web3_private.cofre_case_workspaces where case_id=p_case_id and workspace_id=wid for share;
  if not found then raise exception 'case unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3_private.cofre_lite_features where workspace_id=wid and enabled for share;
  if not found then raise exception 'case unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3_private.cofre_workspaces where id=wid for share;
- perform 1 from capital_web3_private.cofre_workspace_members where workspace_id=wid and user_id=actor and member_role='analyst' and active for share;
- perform 1 from capital_web3.advisory_case_staff where case_id=p_case_id and user_id=actor and staff_role in ('analyst','admin') and active order by staff_role for share;
- perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=actor for share;
- if not found or capital_web3_private.require_human_identity() is distinct from actor
+ perform 1 from capital_web3_private.cofre_workspace_members where workspace_id=wid and user_id=v_actor and member_role='analyst' and active for share;
+ perform 1 from capital_web3.advisory_case_staff where case_id=p_case_id and user_id=v_actor and staff_role in ('analyst','admin') and active order by staff_role for share;
+ perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=v_actor for share;
+ if not found or capital_web3_private.require_human_identity() is distinct from v_actor
   or not capital_web3_private.cofre_is_staff(wid,array['analyst'])
   or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
  request_hash:=pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('case',p_case_id,'revision',p_expected_revision)::text,'UTF8')),'hex');
- select * into old from capital_web3_private.cofre_lite_report_receipts x where x.actor=actor and x.key=p_idempotency_key;
+ select * into old from capital_web3_private.cofre_lite_report_receipts x where x.actor=v_actor and x.key=p_idempotency_key;
  if found then if old.request_hash<>request_hash then raise exception 'key conflict' using errcode='23505'; end if; return old.result; end if;
  select max_receipts_per_actor,minimum_retention_days into strict quota,retention from capital_web3_private.cofre_lite_intake_policy_v02 where singleton for share;
- if (select count(*) from capital_web3_private.cofre_lite_report_receipts x where x.actor=actor)>=quota then raise exception 'receipt limit reached' using errcode='54000'; end if;
+ if (select count(*) from capital_web3_private.cofre_lite_report_receipts x where x.actor=v_actor)>=quota then raise exception 'receipt limit reached' using errcode='54000'; end if;
  select revision,intake into r,data from capital_web3_private.cofre_lite_intakes_v02 where case_id=p_case_id;
  if r is distinct from p_expected_revision then raise exception 'lite changed' using errcode='23514'; end if;
  select report_version_id into vid from capital_web3_private.cofre_lite_report_snapshots where case_id=p_case_id and intake_revision=r;
  if vid is null then
   select report_id into rid from capital_web3_private.cofre_lite_report_registry where case_id=p_case_id;
   if rid is null then
-   insert into capital_web3.advisory_reports(case_id,created_by) values(p_case_id,actor) returning id into rid;
+   insert into capital_web3.advisory_reports(case_id,created_by) values(p_case_id,v_actor) returning id into rid;
    insert into capital_web3_private.cofre_lite_report_registry(case_id,report_id) values(p_case_id,rid);
   end if;
   select coalesce(max(version_number),0)+1 into next_version from capital_web3.advisory_report_versions where report_id=rid;
   insert into capital_web3.advisory_report_versions(report_id,case_id,version_number,content,created_by)
-   values(rid,p_case_id,next_version,capital_web3_private.cofre_lite_canonical_report(data),actor) returning id into vid;
-  insert into capital_web3_private.cofre_lite_report_snapshots(case_id,intake_revision,intake,report_version_id,created_by) values(p_case_id,r,data,vid,actor);
-  insert into capital_web3.advisory_audit_events(case_id,actor_user_id,action,entity_id) values(p_case_id,actor,'cofre_lite_draft_created',vid);
+   values(rid,p_case_id,next_version,capital_web3_private.cofre_lite_canonical_report(data),v_actor) returning id into vid;
+  insert into capital_web3_private.cofre_lite_report_snapshots(case_id,intake_revision,intake,report_version_id,created_by) values(p_case_id,r,data,vid,v_actor);
+  insert into capital_web3.advisory_audit_events(case_id,actor_user_id,action,entity_id) values(p_case_id,v_actor,'cofre_lite_draft_created',vid);
  end if;
  result:=jsonb_build_object('case_id',p_case_id,'intake_revision',r,'report_version_id',vid);
- insert into capital_web3_private.cofre_lite_report_receipts(actor,key,request_hash,result,retain_until) values(actor,p_idempotency_key,request_hash,result,now()+pg_catalog.make_interval(days=>retention));
+ insert into capital_web3_private.cofre_lite_report_receipts(actor,key,request_hash,result,retain_until) values(v_actor,p_idempotency_key,request_hash,result,now()+pg_catalog.make_interval(days=>retention));
  return result;
 end $$;
 revoke all on function capital_web3.advisory_lite_create_draft(uuid,integer,uuid) from public,anon,authenticated,service_role;
