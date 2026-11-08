@@ -165,8 +165,8 @@ select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((p
 select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
 select pg_temp.expect_error($q$select * from capital_web3_private.cofre_lite_signals$q$,'42501','direct access to Lite table denied');
 reset role;
-insert into capital_web3_private.cofre_lite_signal_receipts(actor,key,request_hash,result)
-select '13000000-0000-0000-0000-000000000010'::uuid,md5(n::text)::uuid,repeat('0',64),'{}'::jsonb from generate_series(1,127) n;
+insert into capital_web3_private.cofre_lite_signal_receipts(actor,key,request_hash,result,retain_until)
+select '13000000-0000-0000-0000-000000000010'::uuid,md5(n::text)::uuid,repeat('0',64),'{}'::jsonb,now()+interval '365 days' from generate_series(1,127) n;
 set local role authenticated;
 select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),1,'73000000-0000-0000-0000-000000000103')$q$,'54000','Lite receipt quota blocks new keys');
