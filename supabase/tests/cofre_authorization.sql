@@ -187,6 +187,27 @@ select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-00
 select pg_temp.expect_error($q$select capital_web3.advisory_review_report((pg_temp.data('lite_draft')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_package')->>'content_sha256',pg_temp.data('lite_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000205')$q$,'23514','incomplete Lite cannot be approved');
 select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
 
+-- The unguarded original workflow cannot be called directly by API users.
+select pg_temp.expect_error($q$select capital_web3.advisory_review_report_unguarded(null,null,null,null,null,null)$q$,'42501','Lite review bypass is inaccessible');
+select pg_temp.expect_error($q$select capital_web3.advisory_publish_report_unguarded(null,null,null,null,null,null)$q$,'42501','Lite publication bypass is inaccessible');
+insert into cofre_test_data values('lite_complete', jsonb_set(jsonb_set(jsonb_set(pg_temp.data('lite_v02'),'{profile,experience}','"beginner"'),'{controls}',
+ (select jsonb_object_agg(key,case when key='secret_exposure' then 'no' else 'yes' end) from jsonb_each(pg_temp.data('lite_v02')->'controls'))),'{signals}',
+ (select jsonb_object_agg(key,'no') from jsonb_each(pg_temp.data('lite_v02')->'signals'))));
+select capital_web3.advisory_lite_intake_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite_complete'),1,'73000000-0000-0000-0000-000000000210',null);
+insert into cofre_test_data values('lite_ready',capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,2,'73000000-0000-0000-0000-000000000211'));
+insert into cofre_test_data values('lite_ready_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_ready')->>'report_version_id')::uuid));
+select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-0000-0000-000000000011');
+select capital_web3.advisory_review_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000212');
+select pg_temp.expect_error($q$select capital_web3.advisory_publish_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,array['13000000-0000-0000-0000-000000000001'::uuid],pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256',null,'73000000-0000-0000-0000-000000000213')$q$,'42501','Lite publication remains disabled pending release hardening');
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+select capital_web3.advisory_lite_intake_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite_complete'),'{controls,secret_exposure}','"yes"'),2,'73000000-0000-0000-0000-000000000214',null);
+insert into cofre_test_data values('lite_blocked',capital_web3.advisory_lite_create_draft((pg_temp.data('case')->>'case_id')::uuid,3,'73000000-0000-0000-0000-000000000215'));
+insert into cofre_test_data values('lite_blocked_package',capital_web3.advisory_get_review_package((pg_temp.data('lite_blocked')->>'report_version_id')::uuid));
+select pg_temp.identity('13000000-0000-0000-0000-000000000011','93000000-0000-0000-0000-000000000011');
+select pg_temp.expect_error($q$select capital_web3.advisory_review_report((pg_temp.data('lite_blocked')->>'report_version_id')::uuid,'approved',pg_temp.data('lite_blocked_package')->>'content_sha256',pg_temp.data('lite_blocked_package')->>'manifest_sha256','','73000000-0000-0000-0000-000000000216')$q$,'23514','blocked Lite cannot be approved');
+select pg_temp.expect_error($q$select capital_web3.advisory_publish_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,array['13000000-0000-0000-0000-000000000001'::uuid],pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256',null,'73000000-0000-0000-0000-000000000217')$q$,'23514','previously approved Lite cannot publish after newer intake');
+select pg_temp.identity('13000000-0000-0000-0000-000000000010','93000000-0000-0000-0000-000000000010');
+
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,jsonb_set(pg_temp.data('lite'),'{signals,urgency}','"yes"'),0,'73000000-0000-0000-0000-000000000100')$q$,'23505','Lite rejects changed idempotency payload');
 select pg_temp.expect_error($q$select capital_web3.advisory_lite_signals_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('lite'),0,'73000000-0000-0000-0000-000000000101')$q$,'23514','Lite denies stale revision');
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
@@ -389,5 +410,5 @@ select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_get((p
 select pg_temp.expect_error($q$select capital_web3.advisory_cofre_partial_save((pg_temp.data('case')->>'case_id')::uuid,pg_temp.data('intake'),1,1,'73000000-0000-0000-0000-000000000092')$q$,'42501','revoked analyst session cannot write partial');
 reset role;
 select pg_temp.require((select count(*)=1 from capital_web3.cofre_intakes where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no partial intake version');
-select pg_temp.require((select count(*)=2 from capital_web3.advisory_report_versions where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no extra report version');
+select pg_temp.require((select count(*)=4 from capital_web3.advisory_report_versions where case_id=(pg_temp.data('case')->>'case_id')::uuid),'invalid actions left no extra report version');
 rollback;

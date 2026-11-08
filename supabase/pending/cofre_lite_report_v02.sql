@@ -131,6 +131,67 @@ revoke all on function capital_web3_private.guard_lite_review_and_publication() 
 create trigger lite_review_gate before insert on capital_web3.advisory_human_reviews for each row execute function capital_web3_private.guard_lite_review_and_publication();
 create trigger lite_publication_gate before insert on capital_web3.advisory_publications for each row execute function capital_web3_private.guard_lite_review_and_publication();
 
+create function capital_web3_private.lock_lite_release(p_version uuid,p_roles text[])
+returns void language plpgsql security definer set search_path='' as $$
+declare v_actor uuid; cid uuid; wid uuid; snapshot_rev integer; current_rev integer; state text; author uuid;
+begin
+ -- A missing or foreign version is still handled by original authorization below.
+ -- Lite's report row and snapshot become visible atomically at commit.
+ select s.case_id into cid from capital_web3_private.cofre_lite_report_snapshots s where s.report_version_id=p_version;
+ if cid is null then return; end if;
+ v_actor:=capital_web3_private.require_human_identity();
+ -- First take the common case lock. 0.2 saves and draft creation use it too.
+ perform 1 from capital_web3.advisory_cases where id=cid for update;
+ select cw.workspace_id into wid from capital_web3_private.cofre_case_workspaces cw where cw.case_id=cid for share;
+ if wid is null then raise exception 'report unavailable' using errcode='42501'; end if;
+ perform 1 from capital_web3_private.cofre_lite_features where workspace_id=wid and enabled for share;
+ if not found then raise exception 'report unavailable' using errcode='42501'; end if;
+ perform 1 from capital_web3_private.cofre_workspaces where id=wid for share;
+ perform 1 from capital_web3_private.cofre_workspace_members m where m.workspace_id=wid and m.user_id=v_actor and m.active and m.member_role=any(p_roles) order by m.member_role for share;
+ perform 1 from capital_web3.advisory_case_staff s where s.case_id=cid and s.user_id=v_actor and s.active and s.staff_role=any(p_roles) order by s.staff_role for share;
+ perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=v_actor for share;
+ if not found or capital_web3_private.require_human_identity() is distinct from v_actor
+    or not capital_web3_private.cofre_is_staff(wid,p_roles)
+    or not capital_web3_private.is_assigned_staff(cid,p_roles)
+ then raise exception 'report unavailable' using errcode='42501'; end if;
+ -- Lock and reread version only after case and authorization locks.
+ select v.content->>'status',v.created_by into state,author from capital_web3.advisory_report_versions v
+  where v.id=p_version and v.case_id=cid for update;
+ if not found or author=v_actor then raise exception 'report unavailable' using errcode='42501'; end if;
+ select s.intake_revision into snapshot_rev from capital_web3_private.cofre_lite_report_snapshots s
+  where s.report_version_id=p_version and s.case_id=cid;
+ select i.revision into current_rev from capital_web3_private.cofre_lite_intakes_v02 i where i.case_id=cid;
+ if snapshot_rev is null or current_rev is distinct from snapshot_rev or state is distinct from 'requires_review' then
+   raise exception 'Lite report outdated or not ready' using errcode='23514';
+ end if;
+end $$;
+revoke all on function capital_web3_private.lock_lite_release(uuid,text[]) from public,anon,authenticated,service_role;
+
+
+-- Wrappers lock the Lite authorization chain before the existing report lock.
+-- Other report types retain the existing behavior. The renamed functions are
+-- not executable by clients, preventing an unguarded direct RPC bypass.
+alter function capital_web3.advisory_review_report(uuid,text,text,text,text,uuid) rename to advisory_review_report_unguarded;
+alter function capital_web3.advisory_publish_report(uuid,uuid[],text,text,timestamptz,uuid) rename to advisory_publish_report_unguarded;
+revoke all on function capital_web3.advisory_review_report_unguarded(uuid,text,text,text,text,uuid) from public,anon,authenticated,service_role;
+revoke all on function capital_web3.advisory_publish_report_unguarded(uuid,uuid[],text,text,timestamptz,uuid) from public,anon,authenticated,service_role;
+create function capital_web3.advisory_review_report(p_report_version_id uuid,p_decision text,p_expected_content_sha256 text,p_expected_manifest_sha256 text,p_private_notes text,p_idempotency_key uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+begin
+ perform capital_web3_private.lock_lite_release(p_report_version_id,array['reviewer','admin']);
+ return capital_web3.advisory_review_report_unguarded(p_report_version_id,p_decision,p_expected_content_sha256,p_expected_manifest_sha256,p_private_notes,p_idempotency_key);
+end $$;
+create function capital_web3.advisory_publish_report(p_report_version_id uuid,p_recipient_user_ids uuid[],p_expected_content_sha256 text,p_expected_manifest_sha256 text,p_expires_at timestamptz,p_idempotency_key uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+begin
+ perform capital_web3_private.lock_lite_release(p_report_version_id,array['publisher','admin']);
+ return capital_web3.advisory_publish_report_unguarded(p_report_version_id,p_recipient_user_ids,p_expected_content_sha256,p_expected_manifest_sha256,p_expires_at,p_idempotency_key);
+end $$;
+revoke all on function capital_web3.advisory_review_report(uuid,text,text,text,text,uuid) from public,anon,authenticated,service_role;
+revoke all on function capital_web3.advisory_publish_report(uuid,uuid[],text,text,timestamptz,uuid) from public,anon,authenticated,service_role;
+grant execute on function capital_web3.advisory_review_report(uuid,text,text,text,text,uuid) to authenticated;
+grant execute on function capital_web3.advisory_publish_report(uuid,uuid[],text,text,timestamptz,uuid) to authenticated;
+
 -- This RPC receives only the expected revision and an idempotency key. It never
 -- accepts report content from the caller. Existing review/publication RPCs still
 -- enforce reviewer separation and version-bound hashes.
