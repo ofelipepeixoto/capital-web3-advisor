@@ -261,7 +261,7 @@ cofre = new CofreWorkspace({ root: $('cofre-workspace'), api: (path, body) => cl
 $('journeys-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('journeys', true); });
 $('open-cofre').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
-$('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.root.children.length) lite.render(); showView('lite', true); } });
+$('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.pending) lite.render(); showView('lite', true); } });
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
 window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
 

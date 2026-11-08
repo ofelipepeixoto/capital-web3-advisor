@@ -49,3 +49,15 @@ test('exercício COFRE Lite não salvo também pede confirmação de saída', as
 test('saída aguarda operação Lite ou COFRE terminar', async () => {
   for (const values of [{pending:true},{litePending:true}]) { const result=await exercise({dirty:true,...values,accept:true}); assert.equal(result.logoutCalls,0); assert.equal(result.prompts.length,0); assert.match(result.notice,/Aguarde/); }
 });
+
+test('reabrir Lite atualiza a lista de atendimentos sem interromper requisição pendente', () => {
+  const start = app.indexOf("$('lite-tab').addEventListener('click'");
+  const end = app.indexOf("$('reports-tab').addEventListener", start);
+  assert.ok(start>=0 && end>start); const source=app.slice(start,end);
+  let handler, renders=0, views=0;
+  const lite={ pending:false, root:{children:[{}]}, render:()=>renders++ };
+  const $=id=>id==='lite-tab' ? {addEventListener:(_,cb)=>{handler=cb;}} : {hidden:false};
+  runInNewContext(source,{$,lite,session:{},showView:()=>views++});
+  handler();assert.equal(renders,1);assert.equal(views,1);
+  lite.pending=true;handler();assert.equal(renders,1);assert.equal(views,2);
+});
