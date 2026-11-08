@@ -201,6 +201,8 @@ select capital_web3.advisory_review_report((pg_temp.data('lite_ready')->>'report
 insert into cofre_test_data values('lite_published', capital_web3.advisory_publish_report((pg_temp.data('lite_ready')->>'report_version_id')::uuid,array['13000000-0000-0000-0000-000000000001'::uuid],pg_temp.data('lite_ready_package')->>'content_sha256',pg_temp.data('lite_ready_package')->>'manifest_sha256',null,'73000000-0000-0000-0000-000000000213'));
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
 select pg_temp.require((select count(*)=1 from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_ready')->>'report_version_id')::uuid),'assigned recipient reads published Lite');
+select pg_temp.expect_error($q$select capital_web3.advisory_record_receipt_unguarded((pg_temp.data('lite_published')->>'publication_id')::uuid)$q$,'42501','unguarded receipt is inaccessible');
+select pg_temp.require(capital_web3.advisory_record_receipt((pg_temp.data('lite_published')->>'publication_id')::uuid)->>'publication_id'=pg_temp.data('lite_published')->>'publication_id','recipient may record a Lite receipt');
 select pg_temp.identity('13000000-0000-0000-0000-000000000002','93000000-0000-0000-0000-000000000002');
 select pg_temp.require((select count(*)=0 from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_ready')->>'report_version_id')::uuid),'other client cannot read published Lite');
 reset role;
@@ -208,6 +210,7 @@ update capital_web3_private.cofre_lite_features set enabled=false where workspac
 set local role authenticated;
 select pg_temp.identity('13000000-0000-0000-0000-000000000001','93000000-0000-0000-0000-000000000001');
 select pg_temp.require((select count(*)=0 from capital_web3.advisory_report_versions where id=(pg_temp.data('lite_ready')->>'report_version_id')::uuid),'feature disable hides prior Lite publication');
+select pg_temp.expect_error($q$select capital_web3.advisory_record_receipt((pg_temp.data('lite_published')->>'publication_id')::uuid)$q$,'42501','feature disable blocks Lite receipt');
 reset role;
 update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='83000000-0000-0000-0000-000000000001';
 set local role authenticated;
