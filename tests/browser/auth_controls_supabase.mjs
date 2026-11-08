@@ -72,6 +72,7 @@ export async function runAuthControlsBrowser({ status, user, workspaceId, handle
     await page.locator('#auth-totp-code').fill(totpCode(secret));
     await page.getByRole('button', { name: 'Confirmar código', exact: true }).click();
     await page.locator('#workspace').waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: 'Abrir atendimentos COFRE', exact: true }).click();
     await page.locator('#cofre-workspace-select').waitFor();
     expect(await page.locator('#cofre-workspace-select').inputValue() === workspaceId,
       'actual upgraded browser bearer opens only the enrolled MFA workspace');

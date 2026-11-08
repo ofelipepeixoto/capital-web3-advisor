@@ -60,7 +60,11 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     }
     gate = 'analyst login and create case';
     const analyst = await login('ana');
-    await analyst.locator('#cases-tab').click();
+    await analyst.locator('#journeys-panel').waitFor({ state: 'visible' });
+    expect(await analyst.getByText('Estas jornadas ainda não podem ser iniciadas nesta aplicação.', { exact: true }).isVisible(),
+      'planned journeys are identified as unavailable');
+    await analyst.getByRole('button', { name: 'Abrir atendimentos COFRE', exact: true }).click();
+    expect(await analyst.locator('#cases-panel').isVisible(), 'available journey opens assigned COFRE cases');
     await analyst.locator('#cofre-workspace-select').selectOption(workspaceA);
     await analyst.locator('#cofre-recipient').selectOption(users.clientA.id);
     await analyst.getByRole('button', { name: 'Criar atendimento fictício', exact: true }).click();
@@ -137,6 +141,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     checks.push('independent browser review and recipient-specific publication persist');
     gate = 'client readable mobile report';
     const client = await login('clientA', true);
+    expect(await client.locator('#workspace-nav').isHidden(), 'client does not see staff journey navigation');
     await client.locator('[data-version="' + saved.report_version_id + '"]').click();
     await client.locator('#detail .cofre-report').waitFor();
     for (const heading of ['Objetivo e contexto', 'Inventário por função', 'Controles e evidências',

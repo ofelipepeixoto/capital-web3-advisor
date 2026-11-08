@@ -16,3 +16,5 @@ a{color:#8ce8d4}a:focus-visible,textarea:focus-visible,[tabindex="-1"]:focus-vis
 #detail h3{scroll-margin-top:24px}#reports-heading,#cases-heading{scroll-margin-top:20px}
 @media(max-width:740px){.compact{margin:16px auto}.step-navigation button{flex-basis:calc(50% - 6px)}#workspace-nav button{flex:1}.report-navigation>button{width:100%}}
 @media print{.skip-link,.step-navigation,.access-help{display:none!important}}
+
+.journey-available{max-width:760px}.journey-available h3{margin-top:0}.journey-planned{max-width:760px;margin:28px 0}.journey-planned li{margin:8px 0}#journeys-heading{scroll-margin-top:20px}@media print{#journeys-panel{display:none!important}}

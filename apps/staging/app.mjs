@@ -47,7 +47,7 @@ function clearWorkspace() {
   $('workspace').hidden = true; $('login-panel').hidden = false; $('logout').hidden = true;
   $('identity').textContent = ''; $('reports').replaceChildren(); $('detail').replaceChildren();
   $('password').value = '';
-  $('workspace-nav').hidden = true; $('cases-panel').hidden = true;
+  $('workspace-nav').hidden = true; $('cases-panel').hidden = true; $('journeys-panel').hidden = true;
 }
 function button(label, run, cls = '') {
   const node = element('button', label, cls);
@@ -238,23 +238,26 @@ async function openReport(report) {
 
 function showView(view, focus = false) {
   activeView = view;
-  $('cases-panel').hidden = view !== 'cases'; $('diagnostics-panel').hidden = view !== 'diagnostics';
+  $('journeys-panel').hidden = view !== 'journeys'; $('cases-panel').hidden = view !== 'cases'; $('diagnostics-panel').hidden = view !== 'diagnostics';
+  $('journeys-tab').setAttribute('aria-current', view === 'journeys' ? 'page' : 'false');
   $('cases-tab').setAttribute('aria-current', view === 'cases' ? 'page' : 'false');
   $('reports-tab').setAttribute('aria-current', view === 'diagnostics' ? 'page' : 'false');
-  if (focus) $(view === 'cases' ? 'cases-heading' : 'reports-heading').focus();
+  if (focus) $({journeys:'journeys-heading',cases:'cases-heading',diagnostics:'reports-heading'}[view]).focus();
 }
 cofre = new CofreWorkspace({ root: $('cofre-workspace'), api: (path, body) => client.api(path, body),
   currentSession: () => session, notice: message,
   onCreated: async () => { const epoch = generation, current = await client.api('/session'); if (epoch === generation && session && current.user_id === session.user_id) session = current; },
   onSaved: async reportId => { await refresh(); if (!session) return; showView('diagnostics'); const report = reports.find(row => row.id === reportId); if (report) await openReport(report); },
 });
+$('journeys-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('journeys', true); });
+$('open-cofre').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
 window.addEventListener('beforeunload', event => { if (cofre.dirty && session) { event.preventDefault(); event.returnValue = ''; } });
 
 async function continueAccess(current) {
   if (!Array.isArray(current.assignments) || typeof current.user_id !== 'string') throw new Error('Sessão inválida.');
-  session = current; ++generation; activeView = 'cases';
+  session = current; ++generation; activeView = 'journeys';
   const epoch = generation, access = await client.api('/access-requirements');
   if (epoch !== generation || !session) return;
   if (typeof access.mfa_required !== 'boolean' || !['aal1','aal2'].includes(access.assurance_level)) throw new Error('Sessão inválida.');
