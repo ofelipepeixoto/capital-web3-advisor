@@ -54,7 +54,10 @@ export class PortalClient {
         403: 'Acesso não autorizado.', 404: 'Diagnóstico indisponível para esta conta.',
         409: 'Esta versão mudou ou a ação já foi concluída. Atualize para conferir.',
         429: 'Limite de operações alcançado. Tente mais tarde ou procure a equipe.' };
-      const error = new Error(messages[response.status] || 'Serviço indisponível. Tente novamente mais tarde.');
+      const text = response.status === 429 && /\/cofre\/cases\/[0-9a-f-]{36}\/lite-signals$/.test(path)
+        ? 'O limite de salvamentos foi atingido. Procure a equipe para verificar o atendimento.'
+        : messages[response.status] || 'Serviço indisponível. Tente novamente mais tarde.';
+      const error = new Error(text);
       error.status = response.status; throw error;
     }
     if (response.status === 204) return null;
