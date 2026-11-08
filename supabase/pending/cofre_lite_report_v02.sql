@@ -102,8 +102,7 @@ end $$;
 revoke all on function capital_web3_private.protect_lite_report_version() from public,anon,authenticated,service_role;
 create trigger lite_version_immutable before update or delete on capital_web3.advisory_report_versions for each row execute function capital_web3_private.protect_lite_report_version();
 
--- Lite publication remains disabled until the inherited review/publish authorization
--- path is hardened for concurrent session and workspace-membership revocation.
+-- Lite review and publication require the latest complete synthetic snapshot.
 -- The case row serializes this gate against intake saves and prevents a stale
 -- snapshot becoming approved while a newer answer is committed.
 create function capital_web3_private.guard_lite_review_and_publication()
@@ -122,16 +121,13 @@ begin
    raise exception 'Lite version is incomplete, blocked or out of date' using errcode='23514';
   end if;
  end if;
- if tg_table_name='advisory_publications' then
-  raise exception 'Lite publication is not yet enabled' using errcode='42501';
- end if;
  return new;
 end $$;
 revoke all on function capital_web3_private.guard_lite_review_and_publication() from public,anon,authenticated,service_role;
 create trigger lite_review_gate before insert on capital_web3.advisory_human_reviews for each row execute function capital_web3_private.guard_lite_review_and_publication();
 create trigger lite_publication_gate before insert on capital_web3.advisory_publications for each row execute function capital_web3_private.guard_lite_review_and_publication();
 
-create function capital_web3_private.lock_lite_release(p_version uuid,p_roles text[])
+create function capital_web3_private.lock_lite_release(p_version uuid,p_roles text[],p_recipients uuid[])
 returns void language plpgsql security definer set search_path='' as $$
 declare v_actor uuid; cid uuid; wid uuid; snapshot_rev integer; current_rev integer; state text; author uuid;
 begin
@@ -148,6 +144,15 @@ begin
  if not found then raise exception 'report unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3_private.cofre_workspaces where id=wid for share;
  perform 1 from capital_web3_private.cofre_workspace_members m where m.workspace_id=wid and m.user_id=v_actor and m.active and m.member_role=any(p_roles) order by m.member_role for share;
+ if p_recipients is not null then
+  if cardinality(p_recipients) not between 1 and 100 or array_position(p_recipients,null) is not null then
+   raise exception 'invalid recipients' using errcode='22023';
+  end if;
+  perform 1 from capital_web3_private.cofre_workspace_members m where m.workspace_id=wid and m.user_id=any(p_recipients) and m.member_role='client' and m.active order by m.user_id for share;
+  if (select count(*) from capital_web3_private.cofre_workspace_members m where m.workspace_id=wid and m.user_id=any(p_recipients) and m.member_role='client' and m.active) <> cardinality(p_recipients) then
+   raise exception 'report unavailable' using errcode='42501';
+  end if;
+ end if;
  perform 1 from capital_web3.advisory_case_staff s where s.case_id=cid and s.user_id=v_actor and s.active and s.staff_role=any(p_roles) order by s.staff_role for share;
  perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=v_actor for share;
  if not found or capital_web3_private.require_human_identity() is distinct from v_actor
@@ -165,7 +170,7 @@ begin
    raise exception 'Lite report outdated or not ready' using errcode='23514';
  end if;
 end $$;
-revoke all on function capital_web3_private.lock_lite_release(uuid,text[]) from public,anon,authenticated,service_role;
+revoke all on function capital_web3_private.lock_lite_release(uuid,text[],uuid[]) from public,anon,authenticated,service_role;
 
 
 -- Wrappers lock the Lite authorization chain before the existing report lock.
@@ -178,13 +183,13 @@ revoke all on function capital_web3.advisory_publish_report_unguarded(uuid,uuid[
 create function capital_web3.advisory_review_report(p_report_version_id uuid,p_decision text,p_expected_content_sha256 text,p_expected_manifest_sha256 text,p_private_notes text,p_idempotency_key uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 begin
- perform capital_web3_private.lock_lite_release(p_report_version_id,array['reviewer','admin']);
+ perform capital_web3_private.lock_lite_release(p_report_version_id,array['reviewer','admin'],null);
  return capital_web3.advisory_review_report_unguarded(p_report_version_id,p_decision,p_expected_content_sha256,p_expected_manifest_sha256,p_private_notes,p_idempotency_key);
 end $$;
 create function capital_web3.advisory_publish_report(p_report_version_id uuid,p_recipient_user_ids uuid[],p_expected_content_sha256 text,p_expected_manifest_sha256 text,p_expires_at timestamptz,p_idempotency_key uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 begin
- perform capital_web3_private.lock_lite_release(p_report_version_id,array['publisher','admin']);
+ perform capital_web3_private.lock_lite_release(p_report_version_id,array['publisher','admin'],p_recipient_user_ids);
  return capital_web3.advisory_publish_report_unguarded(p_report_version_id,p_recipient_user_ids,p_expected_content_sha256,p_expected_manifest_sha256,p_expires_at,p_idempotency_key);
 end $$;
 revoke all on function capital_web3.advisory_review_report(uuid,text,text,text,text,uuid) from public,anon,authenticated,service_role;
