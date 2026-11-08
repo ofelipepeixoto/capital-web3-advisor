@@ -2,7 +2,7 @@
  * Answers are declarations, not verified evidence or a safety guarantee.
  * Source models are deliberately separate and require explicit methodological approval.
  */
-import { SIGNAL_IDS, assessSignals } from '../../../apps/staging/cofre-lite-signals.mjs';
+import { SIGNAL_IDS, assessSignals } from './cofre-lite-signals.mjs';
 export { SIGNAL_IDS, assessSignals };
 export type SignalId = typeof SIGNAL_IDS[number];
 export type SignalAnswer = "yes" | "no" | "unknown" | "not_applicable";

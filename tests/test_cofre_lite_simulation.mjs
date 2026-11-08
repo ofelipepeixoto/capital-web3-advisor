@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { LiteSimulation, liteSummary } from '../apps/staging/cofre-lite-simulation.mjs';
 class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.handlers = {}; this.attributes = {}; this._text = ''; this.checked = false; }
@@ -53,4 +54,12 @@ test('os dez sinais da prevenção usam a mesma regra do serviço sem pontuaçã
   assert.equal(assessSignals(values).status, 'blocked');
   assert.equal(liteSummary(ui.answers).state, 'blocked');
   assert.match(root.textContent, /Alerta crítico/);
+});
+
+// Development browser files are duplicated so the test server can serve them.
+// A divergent copy would show clients a different signal policy.
+test('browser signal module matches the Edge-local source', async () => {
+  const browser = await readFile(new URL('../apps/staging/cofre-lite-signals.mjs', import.meta.url), 'utf8');
+  const edge = await readFile(new URL('../supabase/functions/advisory-api/cofre-lite-signals.mjs', import.meta.url), 'utf8');
+  assert.equal(browser, edge);
 });
