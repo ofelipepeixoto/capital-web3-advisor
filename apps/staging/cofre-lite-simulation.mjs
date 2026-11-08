@@ -40,6 +40,21 @@ const SECTIONS = [
 const QUESTIONS = SECTIONS.flatMap(section => section.questions);
 const CONTROL_IDS = ['backup', 'vault', 'apps', 'spending', 'testing', 'watch', 'recovery', 'secret_exposure', 'source', 'permissions', 'payload', 'routine'];
 const ANSWERS = new Set(['yes', 'no', 'unknown', 'not_applicable']);
+// Monthly items are a practice aid only; completion is declared, not verified.
+export const MONTHLY_TASKS = [
+  ['wallet_roles', 'Revisar as funções atribuídas às carteiras.'],
+  ['vault_connections', 'Verificar se a carteira de reserva foi conectada a aplicativos.'],
+  ['permissions', 'Revisar permissões de uso ainda abertas.'],
+  ['unusual_activity', 'Verificar se há movimentações desconhecidas.'],
+  ['inventory', 'Atualizar o inventário de carteiras e redes.'],
+  ['protocols', 'Atualizar a lista de protocolos e contratos utilizados.'],
+  ['offline_backup', 'Confirmar a existência do backup físico, sem informar seu conteúdo.'],
+];
+export function monthlySummary(answers) {
+  const done = MONTHLY_TASKS.filter(([id]) => answers[id] === 'done').length;
+  const pending = MONTHLY_TASKS.filter(([id]) => answers[id] === 'pending').length;
+  return { done, pending, unassessed: MONTHLY_TASKS.length - done - pending };
+}
 const validIntake = value => {
   if (!value || value.schema_version !== 'cofre-lite-intake-0.2' || value.synthetic !== true ||
       value.consents?.assessment !== true || value.consents?.storage !== true ||
@@ -62,7 +77,7 @@ export class LiteSimulation {
     Object.assign(this, { root, api, cases, confirm, onGenerated }); this.epoch = 0; this.clear();
   }
   clear() {
-    this.epoch++; this.answers = {}; this.step = 0; this.dirty = false; this.caseId = ''; this.revision = 0;
+    this.epoch++; this.answers = {}; this.routineAnswers = {}; this.routineDirty = false; this.step = 0; this.dirty = false; this.caseId = ''; this.revision = 0;
     this.loaded = false; this.legacyAvailable = false; this.legacyRevision = null; this.pending = false; this.consents = { assessment: false, storage: false };
     this.keys = new Map(); this.notice = ''; this.root.replaceChildren();
   }
@@ -185,7 +200,7 @@ export class LiteSimulation {
       picker.value = this.caseId; picker.addEventListener('change', () => {
         const next = picker.value;
         if (next === this.caseId) return;
-        if (this.dirty && !this.confirm('Trocar de atendimento descartará as respostas deste exercício nesta sessão. Continuar?')) { picker.value = this.caseId; return; }
+        if ((this.dirty || this.routineDirty) && !this.confirm('Trocar de atendimento descartará as respostas deste exercício nesta sessão. Continuar?')) { picker.value = this.caseId; return; }
         this.clear(); this.caseId = next; this.render();
       });
       const load = node('button', 'Carregar respostas do atendimento'); load.type = 'button'; load.disabled = !this.caseId || this.pending; load.addEventListener('click', () => this.load());
@@ -213,6 +228,24 @@ export class LiteSimulation {
         node('p', 'Para pré-venda, examine projeto, risco e estrutura do token, incluindo liquidez e prazos. Informação clara não elimina o risco de perda.'),
         node('p', 'Os checklists detalhados e sua revisão por atendimento ainda estão em preparação.', 'muted'));
       this.root.append(details);
+    }
+    if (section.title === 'Rotina') {
+      const area = node('section'), title = node('h3', 'Ensaio da rotina mensal'); area.className = 'boundary';
+      area.append(title, node('p', 'Use somente dados fictícios. Este ensaio fica nesta sessão: não é salvo no atendimento, não entra no relatório e será perdido ao sair.'));
+      const status = node('p'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+      const refresh = () => { const { done, pending, unassessed } = monthlySummary(this.routineAnswers); status.textContent = `${done} concluídas · ${pending} pendentes · ${unassessed} não avaliadas. Marcação declarada não comprova execução.`; };
+      refresh(); area.append(status);
+      for (const [id, label] of MONTHLY_TASKS) {
+        const field = node('fieldset'); field.append(node('legend', label));
+        for (const [value, text] of [['done', 'Concluída'], ['pending', 'Pendente'], ['unassessed', 'Não avaliada']]) {
+          const caption = node('label'); caption.className = 'choice'; const input = node('input'); input.type = 'radio'; input.name = 'monthly-' + id; input.value = value; input.checked = (this.routineAnswers[id] || 'unassessed') === value; input.disabled = this.pending;
+          input.addEventListener('change', () => { if (input.checked) { this.routineAnswers[id] = value; this.routineDirty = true; refresh(); } });
+          caption.append(input, document.createTextNode(text)); field.append(caption);
+        }
+        area.append(field);
+      }
+      area.append(node('p', 'O exercício mensal não inclui o teste trimestral de recuperação nem as medidas após incidente. Não digite frases de recuperação, chaves, senhas ou códigos.'));
+      this.root.append(area);
     }
     for (const [id, label, options] of section.questions) {
       const field = node('fieldset'), legend = node('legend', label); field.append(legend);
