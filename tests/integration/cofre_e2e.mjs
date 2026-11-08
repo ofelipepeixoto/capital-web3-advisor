@@ -229,6 +229,78 @@ select pg_sleep(4); commit;`);
     (transition[1].status===200 ? checkTransition.body.data.revision===1 : checkTransition.body.data.legacy_revision===2));
 
 
+  // Lite release gates, actual disposable Auth/PostgREST and two PostgreSQL sessions.
+  const releaseCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
+  const releaseCase=releaseCreated.body.data?.case_id;
+  requireCondition(UUID.test(releaseCase),'Lite release case created');
+  const releaseIntake=fresh(draft02); releaseIntake.profile.experience='beginner';
+  for (const id of controlIds) releaseIntake.controls[id]=id==='secret_exposure'?'no':'yes';
+  for (const id of SIGNAL_IDS) releaseIntake.signals[id]='no';
+  const releasePath='/cofre/cases/'+releaseCase+'/lite-intake';
+  const releaseSaved=await result('ana',releasePath,{intake:releaseIntake,expected_revision:0,legacy_revision:null,idempotency_key:randomUUID()});
+  requireCondition(releaseSaved.status===200,'Lite release fixture saved');
+  const generated=await local('ana','/rest/v1/rpc/advisory_lite_create_draft',{p_case_id:releaseCase,p_expected_revision:1,p_idempotency_key:randomUUID()});
+  const releaseVersion=generated.body?.report_version_id;
+  requireCondition(generated.status===200 && UUID.test(releaseVersion),'Lite canonical draft generated');
+  const releasePkgResponse=await result('rui','/reports/'+releaseVersion+'/review-package');
+  const releasePkg=releasePkgResponse.body.data;
+  requireCondition(releasePkgResponse.status===200 && SHA.test(releasePkg?.content_sha256) && SHA.test(releasePkg?.manifest_sha256),'Lite review package available');
+  const reviewArgs={p_report_version_id:releaseVersion,p_decision:'approved',p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_private_notes:'',p_idempotency_key:randomUUID()};
+  const publishArgs={p_report_version_id:releaseVersion,p_recipient_user_ids:[users.clientA.id],p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_expires_at:null,p_idempotency_key:randomUUID()};
+  pass('Lite direct review denies author and foreign staff',
+    [401,403,404].includes((await local('ana','/rest/v1/rpc/advisory_review_report',reviewArgs)).status) &&
+    [401,403,404].includes((await local('authorB','/rest/v1/rpc/advisory_review_report',reviewArgs)).status));
+  pass('Lite unguarded review and publish are not callable directly',
+    [401,403,404].includes((await local('rui','/rest/v1/rpc/advisory_review_report_unguarded',reviewArgs)).status) &&
+    [401,403,404].includes((await local('rui','/rest/v1/rpc/advisory_publish_report_unguarded',publishArgs)).status));
+  pass('Lite unpublished draft is invisible to its client',(await result('clientA','/reports/'+releaseVersion)).status===404);
+  const reviewerClaims=JSON.parse(Buffer.from(users.rui.token.split('.')[1],'base64url').toString('utf8'));
+  requireCondition(UUID.test(reviewerClaims.session_id),'Lite reviewer session is valid');
+  async function holdSql(sqlText, marker) {
+    const proc=spawn('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,stdio:['pipe','pipe','pipe']});
+    const done=new Promise((resolve,reject)=>{proc.on('error',reject);proc.on('close',resolve);});
+    const ready=new Promise((resolve,reject)=>{let output=''; const timer=setTimeout(()=>reject(Error('release lock did not start')),10000);
+      proc.stdout.on('data',c=>{output+=c.toString();if(output.includes(marker)){clearTimeout(timer);resolve();}});
+      proc.on('error',e=>{clearTimeout(timer);reject(e);});proc.on('close',()=>{clearTimeout(timer);if(!output.includes(marker))reject(Error('release lock failed'));});});
+    proc.stdin.write(sqlText+'\n\\echo '+marker+'\n'); await ready; return {proc,done};
+  }
+  const ruiJwt=JSON.stringify({sub:users.rui.id,role:'authenticated',session_id:reviewerClaims.session_id,aal:'aal1',is_anonymous:false});
+  const reviewHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${ruiJwt}',true);
+    select capital_web3.advisory_review_report('${releaseVersion}','approved','${releasePkg.content_sha256}','${releasePkg.manifest_sha256}','','${reviewArgs.p_idempotency_key}'); reset role;`, 'REVIEW_HELD');
+  try {
+    for (const [label,statement] of [
+      ['case',`update capital_web3.advisory_cases set client_safe_title=client_safe_title where id='${releaseCase}'`],
+      ['feature',`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'`],
+      ['reviewer membership',`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='reviewer'`],
+      ['reviewer assignment',`update capital_web3.advisory_case_staff set active=false where case_id='${releaseCase}' and user_id='${users.rui.id}' and staff_role='reviewer'`],
+      ['reviewer session',`delete from auth.sessions where id='${reviewerClaims.session_id}'`],
+    ]) {
+      const attempt=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,input:`begin; set local lock_timeout='350ms'; ${statement}; commit;`});
+      pass('Lite review serializes '+label,attempt.status!==0 && /lock timeout/i.test(attempt.stderr));
+    }
+    reviewHolder.proc.stdin.end('commit;\n'); requireCondition(await reviewHolder.done===0,'Lite review transaction commits');
+  } finally { if(reviewHolder.proc.exitCode===null)reviewHolder.proc.kill(); }
+  pass('Lite current approved version remains blocked from direct publication',
+    [401,403,404].includes((await local('rui','/rest/v1/rpc/advisory_publish_report',publishArgs)).status));
+  // Update starts before review and holds the case; the waiting old review must fail after commit.
+  const anaJwt=JSON.stringify({sub:users.ana.id,role:'authenticated',session_id:claims.session_id,aal:'aal1',is_anonymous:false});
+  const updateHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${anaJwt}',true);
+    select capital_web3.advisory_lite_intake_save('${releaseCase}','${JSON.stringify(releaseIntake)}'::jsonb,1,'${randomUUID()}',null); reset role;`, 'UPDATE_HELD');
+  try {
+    const pendingReview=local('rui','/rest/v1/rpc/advisory_review_report',{...reviewArgs,p_idempotency_key:randomUUID()});
+    let waiting=false;
+    for(let n=0;n<50&&!waiting;n++){
+      await new Promise(resolve=>setTimeout(resolve,100));
+      const check=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,input:"select count(*) from pg_stat_activity where wait_event_type='Lock' and query ilike '%advisory_review_report%';"});
+      requireCondition(check.status===0,'Lite review waiter query succeeds'); waiting=Number(check.stdout.trim())>0;
+    }
+    requireCondition(waiting,'Lite review waits for intake update'); updateHolder.proc.stdin.end('commit;\n');
+    requireCondition(await updateHolder.done===0,'Lite intake update commits');
+    pass('Lite review waiting behind changed intake rejects stale snapshot',(await pendingReview).status===409);
+  } finally {if(updateHolder.proc.exitCode===null)updateHolder.proc.kill();}
+  pass('Lite old approved version cannot be published after intake changes',
+    (await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()})).status===409);
+
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
   pass('COFRE new case starts without an invented intake', blank.status === 200 && blank.body.data === null);
