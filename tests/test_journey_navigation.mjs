@@ -12,7 +12,7 @@ function harness({ signedIn = true, staff = true } = {}) {
     hidden:false, attrs:{}, handlers:{}, setAttribute(k,v){this.attrs[k]=v;}, focus(){this.focused=true;}, addEventListener(k,cb){this.handlers[k]=cb;}
   }]));
   nodes['workspace-nav'].hidden = !staff;
-  const context = { $: id => nodes[id], session: signedIn ? {} : null, activeView: null, lite: { root: { children: [] }, render() {} } };
+  const context = { $: id => nodes[id], session: signedIn ? {} : null, activeView: null, lite: { root: { children: [] }, render() {} }, exercises: {root: {children: []}, load() {}}  };
   runInNewContext(view + '\n' + handlers, context);
   return {nodes,context};
 }

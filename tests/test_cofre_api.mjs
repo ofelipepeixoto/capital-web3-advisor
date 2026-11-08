@@ -197,3 +197,33 @@ test('partial intake accepts only consented closed synthetic records with honest
     assert.equal(test.calls.length, 1);
   }
 });
+
+test('synthetic journey exercise requires current staff and returns no private roster', async () => {
+  for (const role of ['analyst','reviewer','publisher']) {
+    const {handler,calls}=setup({data:[{user_id:USER,member_role:role,display_name:'private'}]});
+    const res=await handler(request('/cofre/journeys'));assert.equal(res.status,200);
+    const body=await res.json();assert.equal(body.data.length,4);assert.ok(!JSON.stringify(body).includes('private'));
+    assert.ok(calls[1].url.endsWith('/rest/v1/rpc/advisory_cofre_workspaces'));
+  }
+  for(const data of [[],[{user_id:CLIENT,member_role:'analyst'}],[{user_id:USER,member_role:'client'}]]) {
+    const res=await setup({data}).handler(request('/cofre/journeys'));assert.equal(res.status,404);
+  }
+  const anon=setup({auth:{id:USER,is_anonymous:true}});assert.equal((await anon.handler(request('/cofre/journeys'))).status,401);
+  const malformed=setup({data:{user_id:USER}});assert.equal((await malformed.handler(request('/cofre/journeys'))).status,503);
+});
+
+test('synthetic exercise preview rejects real or extraneous data and never persists', async () => {
+  const env=setup({data:[{user_id:USER,member_role:'analyst'}]});
+  const catalog=(await (await env.handler(request('/cofre/journeys'))).json()).data;
+  const j=catalog.find(x=>x.id==='rastro');
+  const body={schema_version:'journey-intake-0.1',synthetic:true,journey:j.id,
+    responses:Object.fromEntries(j.stages.map(k=>[k,{state:'not_assessed',evidence:'none'}]))};
+  const res=await env.handler(request('/cofre/journeys/preview',{method:'POST',body}));
+  const result=await res.json();assert.equal(res.status,200);assert.equal(result.data.status,'needs_input');
+  assert.ok(!('score' in result.data));assert.equal(env.calls.length,4,'each request uses Auth and staff roster only');
+  const forgedReview = structuredClone(body); forgedReview.responses[j.stages[0]] = {state:'human_reviewed',evidence:'human_reviewed'};
+  const forgedGap = structuredClone(body); forgedGap.responses[j.stages[0]] = {state:'gap',evidence:'human_reviewed'};
+  for (const bad of [{...body,synthetic:false},{...body,secret:'private_marker'}, {...body,journey:'__proto__'}, forgedReview, forgedGap]) {
+    const r=await env.handler(request('/cofre/journeys/preview',{method:'POST',body:bad}));assert.equal(r.status,400);assert.ok(!(await r.text()).includes('private_marker'));
+  }
+});

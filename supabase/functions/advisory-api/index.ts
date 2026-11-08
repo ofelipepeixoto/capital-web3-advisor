@@ -3,6 +3,7 @@
  * Native fetch avoids runtime packages and only reaches the operator's project URL.
  */
 import { validateCofreIntake, validatePartialCofreIntake, buildCofreReport } from './cofre.ts';
+import { listSyntheticJourneys, summarizeJourney } from './journeys.mjs';
 type EnvReader = (name: string) => string | undefined;
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type JsonObject = Record<string, unknown>;
@@ -253,6 +254,29 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         if (!isObject(value) || typeof value.mfa_required !== 'boolean' ||
             !['aal1','aal2'].includes(String(value.assurance_level))) throw new ApiError(503, 'upstream_unavailable');
         return respond(200, { mfa_required: value.mfa_required, assurance_level: value.assurance_level, request_id: requestId });
+      }
+      if (['/cofre/journeys', '/cofre/journeys/preview'].includes(path)) {
+        // Current active staff membership and MFA are checked by this definer RPC.
+        // The endpoint is stateless; never associate its test inputs with a case.
+        const roster = await rpc('advisory_cofre_workspaces', {});
+        if (!Array.isArray(roster)) throw new ApiError(503, 'upstream_unavailable');
+        if (!roster.some(row => isObject(row) && row.user_id === user.id &&
+            ['analyst','reviewer','publisher'].includes(String(row.member_role)))) throw new ApiError(404, 'resource_unavailable');
+        if (request.method === 'GET' && path === '/cofre/journeys') {
+          return respond(200, { data: listSyntheticJourneys(), request_id: requestId });
+        }
+        if (request.method === 'POST' && path === '/cofre/journeys/preview') {
+          const body = await readBody(request); let data;
+          try {
+            const validated = summarizeJourney(body);
+            // External callers cannot assert that a person reviewed evidence. Only
+            // future server-controlled review records may establish that state.
+            if (validated.stages.some(stage => stage.state === 'human_reviewed' || stage.evidence === 'human_reviewed')) throw new Error();
+            data = validated;
+          } catch { throw new ApiError(400, 'invalid_journey_intake'); }
+          return respond(200, { data, request_id: requestId });
+        }
+        throw new ApiError(404, 'resource_unavailable');
       }
       if (request.method === 'GET' && path === '/cofre/workspaces') {
         return respond(200, { data: await rpc('advisory_cofre_workspaces', {}), request_id: requestId });

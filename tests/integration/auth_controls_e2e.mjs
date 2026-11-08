@@ -117,6 +117,7 @@ commit;`);
     pass('required MFA withholds the roster from real AAL1 session', before.status === 200 && Array.isArray(before.body.data) && before.body.data.length === 0);
     const create = { workspace_id: workspaceId, client_user_id: client.id, idempotency_key: randomUUID() };
     pass('required MFA blocks case creation at AAL1', (await api(aal1, '/cofre/cases', create)).status === 404);
+    pass('required MFA denies journey catalog at AAL1', (await api(aal1, '/cofre/journeys')).status === 404);
 
     let currentToken = aal1, upgradedToken = null;
     const auth = createAuthControls({
@@ -168,6 +169,18 @@ commit;`);
       (await api(aal2, reportPath + '/review-package')).status === 200);
     pass('the original AAL1 JWT does not inherit the upgraded token authorization',
       (await api(aal1, reportPath)).status === 404 && (await api(aal1, reportPath + '/review-package')).status === 404);
+    const journeyCatalog = await api(aal2, '/cofre/journeys');
+    pass('AAL2 staff may use the synthetic catalog', journeyCatalog.status === 200 && Array.isArray(journeyCatalog.body.data));
+    const journey = journeyCatalog.body.data.find(item => item.id === 'cofre6_individual');
+    requireCondition(Array.isArray(journey?.stages), 'COFRE-6 synthetic stages available');
+    const journeyInput = { schema_version:'journey-intake-0.1', synthetic:true, journey:journey.id,
+      responses:Object.fromEntries(journey.stages.map(id=>[id,{state:'not_assessed',evidence:'none'}])) };
+    pass('AAL2 staff may preview synthetic stages', (await api(aal2, '/cofre/journeys/preview', journeyInput)).body.data.status === 'needs_input');
+    await sql(`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceId}' and user_id='${staff.id}';`);
+    pass('revoked membership immediately denies both synthetic journey routes',
+      (await api(aal2, '/cofre/journeys')).status === 404 &&
+      (await api(aal2, '/cofre/journeys/preview', journeyInput)).status === 404);
+    await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceId}' and user_id='${staff.id}';`);
     gate = 'AAL2 session logout';
     const ended = await local('/auth/v1/logout?scope=local', { method: 'POST', token: aal2, body: {} });
     pass('real MFA session logout is acknowledged by Auth', ended.status === 204);

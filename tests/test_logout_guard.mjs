@@ -15,7 +15,7 @@ async function exercise({ dirty, liteDirty = false, accept = false, fail = false
   const cofre = { dirty, answer: 'preservada' };
   const client = { logout: async () => { logoutCalls++; sessionOpen = false; if (fail) throw Error('offline'); } };
   const window = { confirm: text => { prompts.push(text); return accept; } };
-  runInNewContext(handlerSource, { $: () => ({ addEventListener: (_, cb) => { handler = cb; } }), cofre, lite: { dirty: liteDirty }, client, window, message: value => { notice = value; } });
+  runInNewContext(handlerSource, { $: () => ({ addEventListener: (_, cb) => { handler = cb; } }), cofre, lite: { dirty: liteDirty }, exercises: { dirty: false }, client, window, message: value => { notice = value; } });
   await handler();
   return { prompts, logoutCalls, sessionOpen, answer: cofre.answer, notice };
 }
