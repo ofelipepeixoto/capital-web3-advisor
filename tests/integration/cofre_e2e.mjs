@@ -280,8 +280,8 @@ select pg_sleep(4); commit;`);
     }
     reviewHolder.proc.stdin.end('commit;\n'); requireCondition(await reviewHolder.done===0,'Lite review transaction commits');
   } finally { if(reviewHolder.proc.exitCode===null)reviewHolder.proc.kill(); }
-  pass('Lite current approved version remains blocked from direct publication',
-    [401,403,404].includes((await local('rui','/rest/v1/rpc/advisory_publish_report',publishArgs)).status));
+  const litePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',publishArgs);
+  pass('Lite current approved version is published to the authorized recipient',litePublication.status===200);
   // Update starts before review and holds the case; the waiting old review must fail after commit.
   const anaJwt=JSON.stringify({sub:users.ana.id,role:'authenticated',session_id:claims.session_id,aal:'aal1',is_anonymous:false});
   const updateHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${anaJwt}',true);
