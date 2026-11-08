@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { JourneyExercise } from '../apps/staging/journey-exercise.mjs';
+import { listSyntheticJourneys, summarizeJourney } from '../supabase/functions/advisory-api/journeys.mjs';
+class Element {
+  constructor(tag){this.tagName=tag;this.children=[];this.handlers={};this.attributes={};this._text='';this.value='';this.disabled=false;}
+  set textContent(value){this._text=String(value);this.children=[];}
+  get textContent(){return this._text+this.children.map(x=>x.textContent).join(' ');}
+  append(...items){this.children.push(...items);} replaceChildren(...items){this._text='';this.children=items;}
+  setAttribute(k,v){this.attributes[k]=v;} addEventListener(k,v){this.handlers[k]=v;}
+  all(){return [this,...this.children.flatMap(x=>x.all())];} click(){return this.handlers.click?.();}
+}
+globalThis.document={createElement:t=>new Element(t)};
+globalThis.window={confirm:()=>false};
+const byText=(root,text)=>root.all().find(x=>x.tagName==='button'&&x.textContent===text);
+test('synthetic exercise sends fixed categorical answers and reports gaps honestly',async()=>{
+  const root=new Element('section'),calls=[];
+  const ui=new JourneyExercise({root,api:async(path,body)=>{calls.push({path,body});return {data:body?summarizeJourney(body):listSyntheticJourneys()};}});
+  await ui.load();byText(root,'RASTRO').click();assert.match(root.textContent,/não salva/);
+  const form=root.all().find(x=>x.tagName==='form'); await form.handlers.submit({preventDefault(){}});
+  assert.equal(calls[1].path,'/cofre/journeys/preview');assert.equal(calls[1].body.synthetic,true);
+  assert.match(root.textContent,/Exercício incompleto/);assert.match(root.textContent,/Nada foi salvo/);
+  const select=root.all().find(x=>x.tagName==='select');select.value='gap';select.handlers.change();assert.equal(ui.dirty,true);
+  byText(root,'Escolher outro exercício').click();assert.ok(root.textContent.includes('Plano de 90 dias'));
+  ui.clear();assert.equal(ui.dirty,false);assert.equal(root.textContent,'');
+});
+test('a late result cannot recreate exercise content after session cleanup',async()=>{
+  const root=new Element('section');let resolve;
+  const ui=new JourneyExercise({root,api:()=>new Promise(r=>{resolve=r;})});
+  const pending=ui.load();ui.clear();resolve({data:listSyntheticJourneys()});await pending;
+  assert.equal(root.textContent,'');assert.equal(ui.dirty,false);
+});

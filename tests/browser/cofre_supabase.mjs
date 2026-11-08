@@ -10,7 +10,7 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
   if (status.API_URL !== 'http://127.0.0.1:54321') throw new Error('COFRE browser requires disposable local stack');
   const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
     '/app.mjs': ['app.mjs', 'text/javascript'], '/client.mjs': ['client.mjs', 'text/javascript'],
-    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/cofre-lite-simulation.mjs': ['cofre-lite-simulation.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
+    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/cofre-lite-simulation.mjs': ['cofre-lite-simulation.mjs', 'text/javascript'], '/journey-exercise.mjs': ['journey-exercise.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
     '/auth-controls.mjs': ['auth-controls.mjs','text/javascript'], '/auth-controls-ui.mjs': ['auth-controls-ui.mjs','text/javascript'] };
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -61,6 +61,12 @@ export async function runCofreBrowser({ status, users, workspaceA, handler, orig
     gate = 'analyst login and create case';
     const analyst = await login('ana');
     await analyst.locator('#journeys-panel').waitFor({ state: 'visible' });
+    gate = 'synthetic RASTRO exercise';
+    await analyst.getByRole('button', {name:'RASTRO',exact:true}).click();
+    await analyst.getByRole('button', {name:'Conferir situação do exemplo',exact:true}).click();
+    await analyst.getByText('Exercício incompleto: há etapas não avaliadas ou desconhecidas.', {exact:true}).waitFor();
+    expect(await analyst.getByText('Exercício sem pontuação, verificação independente ou publicação. Nada foi salvo.', {exact:true}).count() === 1,
+      'RASTRO example is incomplete and explicitly not saved or approved');
     expect(await analyst.getByText('Estas jornadas completas ainda não podem ser iniciadas nesta aplicação. Um exercício COFRE Lite fictício está disponível no menu.', { exact: true }).isVisible(),
       'planned journeys are identified as unavailable');
     await analyst.getByRole('button', { name: 'Abrir atendimentos COFRE', exact: true }).click();
