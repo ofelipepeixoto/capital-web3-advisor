@@ -81,7 +81,7 @@ end $$;
 revoke all on function capital_web3_private.cofre_canonical_report(jsonb,text) from public,anon,authenticated,service_role;
 create or replace function capital_web3.advisory_save_cofre_intake(p_case_id uuid,p_intake jsonb,p_content jsonb,p_expected_revision integer,p_idempotency_key uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare v_actor uuid; wid uuid; req jsonb; prior capital_web3_private.cofre_actions%rowtype; rev integer; rid uuid; vid uuid; result jsonb;
+declare v_actor uuid; wid uuid; req jsonb; prior capital_web3_private.cofre_actions%rowtype; rev integer; rid uuid; vid uuid; result jsonb; partial_enabled boolean;
 begin
  v_actor:=capital_web3_private.require_human_identity();
  select workspace_id into wid from capital_web3_private.cofre_case_workspaces where case_id=p_case_id;
@@ -89,6 +89,12 @@ begin
  not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then
  raise exception 'case unavailable' using errcode='42501'; end if;
  perform 1 from capital_web3.advisory_cases where id=p_case_id for update;
+ if capital_web3_private.require_human_identity()<>v_actor or not capital_web3_private.cofre_is_staff(wid,array['analyst']) or not capital_web3_private.is_assigned_staff(p_case_id,array['analyst','admin']) then raise exception 'case unavailable' using errcode='42501'; end if;
+ select l.partial_enabled into partial_enabled from capital_web3_private.cofre_partial_limits l where l.singleton=true for share;
+ if not coalesce(partial_enabled,false)
+ and exists(select 1 from capital_web3_private.cofre_partial_intakes where case_id=p_case_id) then
+   raise exception 'partial progress requires reconciliation' using errcode='23514';
+ end if;
  perform capital_web3_private.validate_cofre_intake(p_intake);
  -- Reconstruct every field from validated inputs and reject any caller-altered content.
  if p_content is distinct from capital_web3_private.cofre_canonical_report(p_intake,p_content->>'as_of') then

@@ -17,9 +17,9 @@ select pg_temp.require((select id=73 from advisory_private.neighbor_sentinel), '
 select pg_temp.require((select count(*)=14 and bool_and(relrowsecurity and relforcerowsecurity)
  from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='capital_web3' and c.relkind='r'), 'all 14 application tables enforce RLS in their own schema');
-select pg_temp.require((select count(*)=7 and bool_and(relrowsecurity and relforcerowsecurity)
+select pg_temp.require((select count(*)=8 and bool_and(relrowsecurity and relforcerowsecurity)
  from pg_class c join pg_namespace n on n.oid=c.relnamespace
- where n.nspname='capital_web3_private' and c.relkind='r'), 'all seven private tables enforce RLS');
+ where n.nspname='capital_web3_private' and c.relkind='r'), 'all eight private tables enforce RLS');
 select pg_temp.require(not has_schema_privilege('anon','capital_web3','usage'), 'anonymous role has no application schema access');
 select pg_temp.require(not has_schema_privilege('authenticated','capital_web3','create'), 'clients cannot create application objects');
 select pg_temp.require((select public=false from storage.buckets where id='capital-web3-advisory'), 'dedicated bucket is private');

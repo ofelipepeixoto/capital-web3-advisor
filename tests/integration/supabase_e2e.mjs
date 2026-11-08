@@ -127,7 +127,7 @@ notify pgrst,'reload schema';`;
   pass("private Storage contains actual synthetic bytes", true);
 
   const backendEnv = { SUPABASE_URL: base, SUPABASE_ANON_KEY: status.ANON_KEY,
-    ADVISORY_ALLOWED_ORIGINS: origin };
+    ADVISORY_ALLOWED_ORIGINS: origin, COFRE_PARTIAL_ENABLED: 'true' };
   const handler = createHandler((name) => backendEnv[name], fetch, { localTest: true });
   const api = (role, path, body) => handler(new Request(base + "/functions/v1/advisory-api" + path, {
     method: body === undefined ? "GET" : "POST",

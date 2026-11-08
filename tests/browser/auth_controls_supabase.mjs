@@ -10,7 +10,7 @@ export async function runAuthControlsBrowser({ status, user, workspaceId, handle
   if (status.API_URL !== 'http://127.0.0.1:54321') throw new Error('Auth browser requires disposable local stack');
   const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
     '/app.mjs': ['app.mjs', 'text/javascript'], '/client.mjs': ['client.mjs', 'text/javascript'],
-    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/cofre-lite-simulation.mjs': ['cofre-lite-simulation.mjs', 'text/javascript'], '/auth-controls.mjs': ['auth-controls.mjs', 'text/javascript'],
+    '/cofre-ui.mjs': ['cofre-ui.mjs', 'text/javascript'], '/cofre-lite-simulation.mjs': ['cofre-lite-simulation.mjs', 'text/javascript'], '/cofre-lite-signals.mjs': ['cofre-lite-signals.mjs', 'text/javascript'], '/journey-exercise.mjs': ['journey-exercise.mjs', 'text/javascript'], '/auth-controls.mjs': ['auth-controls.mjs', 'text/javascript'],
     '/auth-controls-ui.mjs': ['auth-controls-ui.mjs', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
