@@ -143,6 +143,8 @@ commit;`);
   pass('Lite 0.2 consented explicit transition retries safely',retry02.every(r=>r.status===200 && r.body.data.revision===1));
   const read02=await result('ana',v02Path), old01=await result('ana',litePath);
   pass('Lite 0.2 retains unknown and legacy signals are never overwritten',read02.status===200 && read02.body.data.intake.controls.vault==='unknown' && old01.status===200 && old01.body.data.revision===2);
+  const staleLegacy={...liteSave,expected_revision:2,idempotency_key:randomUUID()};
+  pass('Lite legacy is read-only after transition; exact old retries still work',(await result('ana',litePath,staleLegacy)).status===409 && (await result('ana',litePath,liteSave)).body.data.revision===1);
   const second02={...save02,expected_revision:1,legacy_revision:null,idempotency_key:randomUUID()};
   const rival02=fresh(second02);rival02.idempotency_key=randomUUID();rival02.intake.controls.backup='yes';
   const race02=await Promise.all([result('ana',v02Path,second02),result('ana',v02Path,rival02)]);
