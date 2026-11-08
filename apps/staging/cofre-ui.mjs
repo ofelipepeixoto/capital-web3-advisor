@@ -162,7 +162,7 @@ export function renderLiteReport(content) {
     for (const [id, title] of Object.entries(LITE_SIGNAL_LABELS)) list.append(node('li', title + ': ' + liteLabel(LITE_VALUE_LABELS, answers[id], 'Não informado')));
     signals.append(list);
   }
-  const assessmentLabels = Object.freeze({ blocked: 'Interromper e pedir apoio', pause_and_investigate: 'Pausar e investigar', review_signals: 'Revisar os sinais', incomplete: 'Avaliação incompleta', no_signal_reported: 'Nenhum sinal informado' });
+  const assessmentLabels = Object.freeze({ blocked: 'Interromper e pedir apoio', pause_and_investigate: 'Pausar e investigar', review_signals: 'Revisar os sinais', incomplete: 'Avaliação incompleta', no_signal_reported: 'Nenhum sinal de alerta relatado' });
   signals.append(datum('Avaliação declarada', liteLabel(assessmentLabels, content.signals?.assessment?.status, 'Não informada')));
   box.append(signals);
   const findings = node('section'); findings.append(node('h3', 'Pontos que precisam de atenção'));

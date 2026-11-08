@@ -309,7 +309,9 @@ test('Lite report presents the same complete, inert content for review and clien
   complete.profile.experience = 'some';
   for (const id of LITE_CONTROL_IDS) complete.controls[id] = id === 'secret_exposure' ? 'no' : 'yes';
   for (const id of SIGNAL_IDS) complete.signals[id] = 'no';
-  assert.ok(renderLiteReport(buildLiteReport(complete)).textContent.includes('Respostas completas; aguardam revisão'));
+  const completeView = renderLiteReport(buildLiteReport(complete));
+  assert.ok(completeView.textContent.includes('Respostas completas; aguardam revisão'));
+  assert.ok(completeView.textContent.includes('Nenhum sinal de alerta relatado'));
   complete.controls.backup = 'unknown';
   assert.ok(renderLiteReport(buildLiteReport(complete)).textContent.includes('Faltam informações'));
   assert.ok(renderLiteReport({ status: '__proto__', gaps: ['controls.__proto__'] }).textContent.includes('Controle não identificado'));
