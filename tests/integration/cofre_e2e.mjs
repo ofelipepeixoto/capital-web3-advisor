@@ -1,7 +1,7 @@
 /** Real, disposable local Auth/PostgREST COFRE integration.
  * Credentials remain in memory; only fixed assertion labels enter CI output.
  */
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { COFRE_CONTROL_IDS } from '../../supabase/functions/advisory-api/cofre.ts';
 import { SIGNAL_IDS } from '../../supabase/functions/advisory-api/cofre-lite-rules.ts';
@@ -104,6 +104,7 @@ commit;`);
     signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
   const liteSave = {intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
   const directLite = {p_case_id:caseId,p_intake:liteDraft,p_expected_revision:0,p_idempotency_key:randomUUID()};
+  pass('Lite 0.2 direct read default-off is denied', (await local('ana','/rest/v1/rpc/advisory_lite_intake_get',{p_case_id:caseId})).status===403);
   const offGet=await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId});
   const offSave=await local('ana','/rest/v1/rpc/advisory_lite_signals_save',directLite);
   pass('Lite default-off denies direct PostgREST read and write',offGet.status===403 && offSave.status===403);
@@ -146,14 +147,35 @@ select set_config('request.jwt.claims','${JSON.stringify({sub:users.ana.id,role:
 select capital_web3.advisory_lite_signals_save('${caseId}','${JSON.stringify(liteDraft)}'::jsonb,2,'${randomUUID()}');
 reset role;
 \\echo LITE_LOCK_READY
-select pg_sleep(4); commit;`);
+select pg_sleep(8); commit;`);
   try {
     await ready;
     const toggle = spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,
       input:`begin; set local lock_timeout='500ms'; update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'; commit;`});
     pass('Lite disable cannot commit before an in-flight write completes',toggle.status!==0 && /lock timeout/i.test(toggle.stderr));
+    for (const [name, statement] of [
+      ['membership', `update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst'`],
+      ['assignment', `update capital_web3.advisory_case_staff set active=false where case_id='${caseId}' and user_id='${users.ana.id}' and staff_role='analyst'`],
+      ['session', `delete from auth.sessions where id='${claims.session_id}'`],
+    ]) {
+      const revoke=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,
+        input:`begin; set local lock_timeout='500ms'; ${statement}; commit;`});
+      pass(`Lite ${name} revocation cannot commit before in-flight write`,revoke.status!==0 && /lock timeout/i.test(revoke.stderr));
+    }
     requireCondition(await finished === 0, 'Lite lock holder commits');
   } finally { if (holder.exitCode === null) holder.kill(); }
+  // A smaller operator capacity blocks only new receipts; safe replay succeeds.
+  await sql(`update capital_web3_private.cofre_lite_receipt_policy set max_receipts_per_actor=1, minimum_retention_days=30 where singleton=true;`);
+  const quotaReplay=await result('ana',litePath,liteSave);
+  const quotaNew=await result('ana',litePath,{...liteSave,expected_revision:3,idempotency_key:randomUUID()});
+  pass('Lite capacity preserves same-key replay and rejects new writes',quotaReplay.status===200 && quotaReplay.body.data.revision===1 && quotaNew.status===429);
+  await sql(`update capital_web3_private.cofre_lite_receipt_policy set max_receipts_per_actor=128, minimum_retention_days=30 where singleton=true;`);
+  const retentionKey=randomUUID();
+  const retentionWrite=await result('ana',litePath,{...liteSave,expected_revision:3,idempotency_key:retentionKey});
+  pass('Lite configured retention records a new receipt',retentionWrite.status===200 && retentionWrite.body.data.revision===4);
+  const retentionQuery=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,
+    input:`select (retain_until-created_at >= interval '30 days')::text from capital_web3_private.cofre_lite_signal_receipts where actor='${users.ana.id}' and key='${retentionKey}';`});
+  pass('Lite minimum retention is recorded without a cleanup job',retentionQuery.status===0 && retentionQuery.stdout.trim()==='true');
   await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
   pass('Lite confirmed disable denies new direct reads', (await local('ana','/rest/v1/rpc/advisory_lite_signals_get',{p_case_id:caseId})).status===403);
   await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
@@ -170,7 +192,7 @@ select pg_sleep(4); commit;`);
   caseHolder.stdin.write(`begin; select id from capital_web3.advisory_cases where id='${caseId}' for update;\n\\echo CASE_LOCK_READY\n`);
   try {
     await caseReady;
-    const waitingSave={intake:liteDraft,expected_revision:3,idempotency_key:randomUUID()};
+    const waitingSave={intake:liteDraft,expected_revision:4,idempotency_key:randomUUID()};
     const delayed = result('ana',litePath,waitingSave);
     let waiting=false;
     for (let n=0;n<40 && !waiting;n++) {
@@ -187,7 +209,293 @@ select pg_sleep(4); commit;`);
     pass('Lite rechecks analyst membership after waiting for the case lock',(await delayed).status===404);
   } finally { if(caseHolder.exitCode===null)caseHolder.kill(); }
   await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.ana.id}' and member_role='analyst';`);
+  await sql(`update capital_web3.advisory_case_staff set active=false where case_id='${caseId}' and user_id='${users.ana.id}' and staff_role='analyst';`);
+  pass('Lite denies a write started after assignment revocation', (await result('ana',litePath,{...liteSave,expected_revision:4,idempotency_key:randomUUID()})).status===404);
+  await sql(`update capital_web3.advisory_case_staff set active=true where case_id='${caseId}' and user_id='${users.ana.id}' and staff_role='analyst';`);
 
+  // V0.2 does not overwrite earlier signals; migration requires explicit acknowledgment.
+  const v02Path='/cofre/cases/'+caseId+'/lite-intake';
+  const controlIds=['backup','vault','apps','spending','testing','watch','recovery','secret_exposure','source','permissions','payload','routine'];
+  const draft02={schema_version:'cofre-lite-intake-0.2',synthetic:true,consents:{assessment:true,storage:true},profile:{experience:'unknown'},controls:Object.fromEntries(controlIds.map(id=>[id,'unknown'])),signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
+  const legacyMarker=await result('ana',v02Path);
+  pass('Lite 0.2 detects earlier signals without importing them',legacyMarker.status===200 && legacyMarker.body.data.legacy_available===true && legacyMarker.body.data.legacy_revision===4);
+  const save02={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:null};
+  pass('Lite 0.2 requires explicit acknowledgment of existing signals',(await result('ana',v02Path,save02)).status===409);
+  const invalid02=fresh(save02);invalid02.intake.profile.experience=null;
+  pass('Lite 0.2 rejects missing profile and denies direct invalid input', (await result('ana',v02Path,invalid02)).status===400 &&
+    (await local('ana','/rest/v1/rpc/advisory_lite_intake_save',{p_case_id:caseId,p_intake:invalid02.intake,p_expected_revision:0,p_idempotency_key:randomUUID(),p_legacy_revision:4})).status===400);
+  pass('Lite 0.2 denies client and foreign analyst',(await result('clientA',v02Path)).status===404 && (await result('authorB',v02Path)).status===404);
+  save02.legacy_revision=4;
+  const retry02=await Promise.all([result('ana',v02Path,save02),result('ana',v02Path,save02)]);
+  pass('Lite 0.2 consented explicit transition retries safely',retry02.every(r=>r.status===200 && r.body.data.revision===1));
+  const read02=await result('ana',v02Path), old01=await result('ana',litePath);
+  pass('Lite 0.2 retains unknown and legacy signals are never overwritten',read02.status===200 && read02.body.data.intake.controls.vault==='unknown' && old01.status===200 && old01.body.data.revision===4);
+  const staleLegacy={...liteSave,expected_revision:4,idempotency_key:randomUUID()};
+  pass('Lite legacy is read-only after transition; exact old retries still work',(await result('ana',litePath,staleLegacy)).status===409 && (await result('ana',litePath,liteSave)).body.data.revision===1);
+  const second02={...save02,expected_revision:1,legacy_revision:null,idempotency_key:randomUUID()};
+  const rival02=fresh(second02);rival02.idempotency_key=randomUUID();rival02.intake.controls.backup='yes';
+  const race02=await Promise.all([result('ana',v02Path,second02),result('ana',v02Path,rival02)]);
+  pass('Lite 0.2 simultaneous edits have one conflict',race02.map(r=>r.status).sort().join(',')==='200,409');
+  const liteReportPath='/cofre/cases/'+caseId+'/lite-report';
+  const reportRequest={expected_revision:2,idempotency_key:randomUUID()};
+  pass('Lite report endpoint rejects client and foreign analyst',
+    (await result('clientA',liteReportPath,reportRequest)).status===404 && (await result('authorB',liteReportPath,reportRequest)).status===404);
+  pass('Lite report endpoint rejects forged content',
+    (await result('ana',liteReportPath,{...reportRequest,content:{status:'approved'}})).status===400);
+  const reportRetry=await Promise.all([result('ana',liteReportPath,reportRequest),result('ana',liteReportPath,reportRequest)]);
+  const liteReportVersion=reportRetry[0].body.data?.report_version_id;
+  pass('Lite report endpoint retries return one server-generated version',
+    reportRetry.every(r=>r.status===200 && r.body.data.intake_revision===2 && r.body.data.report_version_id===liteReportVersion) && UUID.test(liteReportVersion));
+  pass('Lite report endpoint rejects stale revision',
+    (await result('ana',liteReportPath,{expected_revision:1,idempotency_key:randomUUID()})).status===409);
+  // An old tab and an explicit migration cannot commit conflicting sources.
+  const otherCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
+  const migrationCase=otherCreated.body.data?.case_id;
+  requireCondition(UUID.test(migrationCase),'transition race case exists');
+  const oldPath='/cofre/cases/'+migrationCase+'/lite-signals', newPath='/cofre/cases/'+migrationCase+'/lite-intake';
+  const baselineLegacy={intake:liteDraft,expected_revision:0,idempotency_key:randomUUID()};
+  requireCondition((await result('ana',oldPath,baselineLegacy)).status===200,'transition race has initial legacy signals');
+  const legacyUpdate={intake:{...liteDraft,signals:{...liteDraft.signals,urgency:'yes'}},expected_revision:1,idempotency_key:randomUUID()};
+  const newIntake={intake:draft02,expected_revision:0,idempotency_key:randomUUID(),legacy_revision:1};
+  const transition=await Promise.all([result('ana',oldPath,legacyUpdate),result('ana',newPath,newIntake)]);
+  pass('Lite concurrent legacy write and transition never both commit',transition.map(r=>r.status).sort().join(',')==='200,409');
+  const checkTransition=await result('ana',newPath);
+  pass('Lite transition race leaves visible version or updated legacy marker',checkTransition.status===200 &&
+    (transition[1].status===200 ? checkTransition.body.data.revision===1 : checkTransition.body.data.legacy_revision===2));
+
+
+  // Lite release gates, actual disposable Auth/PostgREST and two PostgreSQL sessions.
+  const releaseCreated=await result('ana','/cofre/cases',{...create,idempotency_key:randomUUID()});
+  const releaseCase=releaseCreated.body.data?.case_id;
+  requireCondition(UUID.test(releaseCase),'Lite release case created');
+  const releaseIntake=fresh(draft02); releaseIntake.profile.experience='beginner';
+  for (const id of controlIds) releaseIntake.controls[id]=id==='secret_exposure'?'no':'yes';
+  for (const id of SIGNAL_IDS) releaseIntake.signals[id]='no';
+  const releasePath='/cofre/cases/'+releaseCase+'/lite-intake';
+  const releaseSaved=await result('ana',releasePath,{intake:releaseIntake,expected_revision:0,legacy_revision:null,idempotency_key:randomUUID()});
+  requireCondition(releaseSaved.status===200,'Lite release fixture saved');
+  const generated=await local('ana','/rest/v1/rpc/advisory_lite_create_draft',{p_case_id:releaseCase,p_expected_revision:1,p_idempotency_key:randomUUID()});
+  const releaseVersion=generated.body?.report_version_id;
+  requireCondition(generated.status===200 && UUID.test(releaseVersion),'Lite canonical draft generated');
+  const releasePkgResponse=await result('rui','/reports/'+releaseVersion+'/review-package');
+  const releasePkg=releasePkgResponse.body.data;
+  requireCondition(releasePkgResponse.status===200 && SHA.test(releasePkg?.content_sha256) && SHA.test(releasePkg?.manifest_sha256),'Lite review package available');
+  const liteEligibility=await result('rui','/reports/'+releaseVersion+'/lite-eligibility');
+  pass('Lite eligibility is visible to assigned reviewer and hidden from client',liteEligibility.status===200 && liteEligibility.body.data.state==='ready' && liteEligibility.body.data.can_review===true && (await result('clientA','/reports/'+releaseVersion+'/lite-eligibility')).status===404);
+  const eligibilityPath='/rest/v1/rpc/advisory_lite_report_eligibility';
+  const eligibilityArgs={p_report_version_id:releaseVersion};
+  const anonymous=await fetch(status.API_URL+eligibilityPath,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+    headers:{apikey:status.ANON_KEY,Authorization:'Bearer '+status.ANON_KEY,'Content-Type':'application/json','Content-Profile':'capital_web3'},body:JSON.stringify(eligibilityArgs)});
+  const outsider=await local('authorB',eligibilityPath,eligibilityArgs);
+  const clientEligibility=await local('clientA',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility denies anonymous, foreign staff and client on direct PostgREST',
+    [401,403,404].includes(anonymous.status) && [401,403,404].includes(outsider.status) && [401,403,404].includes(clientEligibility.status));
+  const authorEligibility=await local('ana',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility denies self review and publication',authorEligibility.status===200 && authorEligibility.body.can_review===false && authorEligibility.body.can_publish_with_valid_recipients===false);
+  await sql(`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='reviewer';`);
+  const roleEligibility=await local('rui',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility respects revoked reviewer role when another staff role remains',roleEligibility.status===200 && roleEligibility.body.can_review===false);
+  await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='reviewer';`);
+  await sql(`update capital_web3_private.cofre_workspaces set staff_mfa_required=true where id='${workspaceA}';`);
+  pass('Lite eligibility denies staff session without required MFA',[401,403,404].includes((await local('rui',eligibilityPath,eligibilityArgs)).status));
+  await sql(`update capital_web3_private.cofre_workspaces set staff_mfa_required=false where id='${workspaceA}';`);
+  const reviewArgs={p_report_version_id:releaseVersion,p_decision:'approved',p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_private_notes:'',p_idempotency_key:randomUUID()};
+  const publishArgs={p_report_version_id:releaseVersion,p_recipient_user_ids:[users.clientA.id],p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_expires_at:null,p_idempotency_key:randomUUID()};
+  pass('Lite direct review denies author and foreign staff',
+    [401,403,404].includes((await local('ana','/rest/v1/rpc/advisory_review_report',reviewArgs)).status) &&
+    [401,403,404].includes((await local('authorB','/rest/v1/rpc/advisory_review_report',reviewArgs)).status));
+  pass('Lite unguarded review and publish are not callable directly',
+    [401,403,404].includes((await local('rui','/rest/v1/rpc/advisory_review_report_unguarded',reviewArgs)).status) &&
+    [401,403,404].includes((await local('rui','/rest/v1/rpc/advisory_publish_report_unguarded',publishArgs)).status));
+  pass('Lite unpublished draft is invisible to its client',(await result('clientA','/reports/'+releaseVersion)).status===404);
+  const reviewerClaims=JSON.parse(Buffer.from(users.rui.token.split('.')[1],'base64url').toString('utf8'));
+  requireCondition(UUID.test(reviewerClaims.session_id),'Lite reviewer session is valid');
+  await sql(`update auth.sessions set not_after=now()-interval '1 minute' where id='${reviewerClaims.session_id}';`);
+  pass('Lite eligibility denies a revoked or expired database session',[401,403,404].includes((await local('rui',eligibilityPath,eligibilityArgs)).status));
+  await sql(`update auth.sessions set not_after=null where id='${reviewerClaims.session_id}';`);
+  async function holdSql(sqlText, marker) {
+    const proc=spawn('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,stdio:['pipe','pipe','pipe']});
+    const done=new Promise((resolve,reject)=>{proc.on('error',reject);proc.on('close',resolve);});
+    const ready=new Promise((resolve,reject)=>{let output=''; const timer=setTimeout(()=>reject(Error('release lock did not start')),10000);
+      proc.stdout.on('data',c=>{output+=c.toString();if(output.includes(marker)){clearTimeout(timer);resolve();}});
+      proc.on('error',e=>{clearTimeout(timer);reject(e);});proc.on('close',()=>{clearTimeout(timer);if(!output.includes(marker))reject(Error('release lock failed'));});});
+    proc.stdin.write(sqlText+'\n\\echo '+marker+'\n'); await ready; return {proc,done};
+  }
+  const ruiJwt=JSON.stringify({sub:users.rui.id,role:'authenticated',session_id:reviewerClaims.session_id,aal:'aal1',is_anonymous:false});
+  const reviewHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${ruiJwt}',true);
+    select capital_web3.advisory_review_report('${releaseVersion}','approved','${releasePkg.content_sha256}','${releasePkg.manifest_sha256}','','${reviewArgs.p_idempotency_key}'); reset role;`, 'REVIEW_HELD');
+  try {
+    for (const [label,statement] of [
+      ['case',`update capital_web3.advisory_cases set client_safe_title=client_safe_title where id='${releaseCase}'`],
+      ['feature',`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'`],
+      ['reviewer membership',`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='reviewer'`],
+      ['reviewer assignment',`update capital_web3.advisory_case_staff set active=false where case_id='${releaseCase}' and user_id='${users.rui.id}' and staff_role='reviewer'`],
+      ['reviewer session',`delete from auth.sessions where id='${reviewerClaims.session_id}'`],
+    ]) {
+      const attempt=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,input:`begin; set local lock_timeout='350ms'; ${statement}; commit;`});
+      pass('Lite review serializes '+label,attempt.status!==0 && /lock timeout/i.test(attempt.stderr));
+    }
+    reviewHolder.proc.stdin.end('commit;\n'); requireCondition(await reviewHolder.done===0,'Lite review transaction commits');
+  } finally { if(reviewHolder.proc.exitCode===null)reviewHolder.proc.kill(); }
+  const unapprovedRecipient=await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_recipient_user_ids:[users.clientB.id],p_idempotency_key:randomUUID()});
+  pass('Lite publication denies unrelated client', [401,403,404].includes(unapprovedRecipient.status));
+  const ownPublication=await local('ana','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()});
+  pass('Lite author cannot publish own report',[401,403,404].includes(ownPublication.status));
+  const publishHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${ruiJwt}',true);
+    select capital_web3.advisory_publish_report('${releaseVersion}',array['${users.clientA.id}'::uuid],'${releasePkg.content_sha256}','${releasePkg.manifest_sha256}',null,'${publishArgs.p_idempotency_key}'); reset role;`, 'PUBLISH_HELD');
+  try {
+    for (const [label,statement] of [
+      ['case',`update capital_web3.advisory_cases set client_safe_title=client_safe_title where id='${releaseCase}'`],
+      ['feature',`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'`],
+      ['publisher membership',`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.rui.id}' and member_role='publisher'`],
+      ['publisher assignment',`update capital_web3.advisory_case_staff set active=false where case_id='${releaseCase}' and user_id='${users.rui.id}' and staff_role='publisher'`],
+      ['publisher session',`delete from auth.sessions where id='${reviewerClaims.session_id}'`],
+      ['recipient membership',`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client'`],
+      ['recipient assignment',`update capital_web3.advisory_case_clients set active=false where case_id='${releaseCase}' and user_id='${users.clientA.id}'`],
+    ]) {
+      const attempt=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,input:`begin; set local lock_timeout='350ms'; ${statement}; commit;`});
+      pass('Lite publication serializes '+label,attempt.status!==0 && /lock timeout/i.test(attempt.stderr));
+    }
+    publishHolder.proc.stdin.end('commit;\n'); requireCondition(await publishHolder.done===0,'Lite publication transaction commits');
+  } finally {if(publishHolder.proc.exitCode===null)publishHolder.proc.kill();}
+  const litePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',publishArgs);
+  const litePublicationId=litePublication.body?.publication_id;
+  pass('Lite current approved version is published and replayed idempotently',litePublication.status===200 && UUID.test(litePublicationId));
+  pass('Lite delivery is visible only to intended recipient',
+    (await result('clientA','/reports/'+releaseVersion)).status===200 &&
+    (await result('clientB','/reports/'+releaseVersion)).status===404);
+  // Test-only fixture, on this isolated database only: COFRE deliberately prohibits
+  // attachments. Injecting synthetic metadata after publication exercises the
+  // Storage read predicate; it does NOT demonstrate that attachments are safe.
+  async function storageFixture(version,caseId) {
+    const asset=randomUUID(), object='fixture-lite/'+randomUUID()+'.json';
+    const bytes=Buffer.from('{"synthetic":true}');
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    const upload=await fetch(status.API_URL+'/storage/v1/object/capital-web3-advisory/'+object,{
+      method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+      headers:{apikey:status.SERVICE_ROLE_KEY,Authorization:'Bearer '+status.SERVICE_ROLE_KEY,'Content-Type':'application/json','x-upsert':'false'},body:bytes});
+    requireCondition(upload.ok,'synthetic Lite Storage fixture upload');
+    await sql(`begin; set local session_replication_role=replica;
+      insert into capital_web3.advisory_report_assets(id,report_version_id,case_id,bucket_id,object_name,bytes_sha256,mime_type)
+      values('${asset}','${version}','${caseId}','capital-web3-advisory','${object}','${digest}','application/json'); commit;`);
+    return {asset,object,bytes};
+  }
+  async function liteStorage(role,object) {
+    return fetch(status.API_URL+'/storage/v1/object/authenticated/capital-web3-advisory/'+object,{
+      method:'GET',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:status.ANON_KEY,Authorization:'Bearer '+users[role].token}});
+  }
+  const storageOld=await storageFixture(releaseVersion,releaseCase);
+  const initialStorage=await liteStorage('clientA',storageOld.object);
+  pass('Lite synthetic Storage fixture is readable by its recipient',initialStorage.status===200 && Buffer.from(await initialStorage.arrayBuffer()).equals(storageOld.bytes));
+  pass('Lite synthetic Storage fixture denies foreign client',!(await liteStorage('clientB',storageOld.object)).ok);
+  const clientClaims=JSON.parse(Buffer.from(users.clientA.token.split('.')[1],'base64url').toString('utf8'));
+  requireCondition(UUID.test(clientClaims.session_id),'Lite client session is valid');
+  const clientJwt=JSON.stringify({sub:users.clientA.id,role:'authenticated',session_id:clientClaims.session_id,aal:'aal1',is_anonymous:false});
+  pass('Lite unguarded receipt RPC is not directly callable',
+    [401,403,404].includes((await local('clientA','/rest/v1/rpc/advisory_record_receipt_unguarded',{p_publication_id:litePublicationId})).status));
+  const receiptHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${clientJwt}',true);
+    select capital_web3.advisory_record_receipt('${litePublicationId}'); reset role;`, 'RECEIPT_HELD');
+  try {
+    for (const [label,statement] of [
+      ['case',`update capital_web3.advisory_cases set client_safe_title=client_safe_title where id='${releaseCase}'`],
+      ['feature',`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}'`],
+      ['client membership',`update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client'`],
+      ['client assignment',`update capital_web3.advisory_case_clients set active=false where case_id='${releaseCase}' and user_id='${users.clientA.id}'`],
+      ['client session',`delete from auth.sessions where id='${clientClaims.session_id}'`],
+      ['publication',`delete from capital_web3.advisory_publications where id='${litePublicationId}'`],
+    ]) {
+      const attempt=spawnSync('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:5000,input:`begin; set local lock_timeout='350ms'; ${statement}; commit;`});
+      pass('Lite receipt serializes '+label,attempt.status!==0 && /lock timeout/i.test(attempt.stderr));
+    }
+    receiptHolder.proc.stdin.end('commit;\n'); requireCondition(await receiptHolder.done===0,'Lite receipt transaction commits');
+  } finally {if(receiptHolder.proc.exitCode===null)receiptHolder.proc.kill();}
+  // Update starts before review and holds the case; the waiting old review must fail after commit.
+  const anaJwt=JSON.stringify({sub:users.ana.id,role:'authenticated',session_id:claims.session_id,aal:'aal1',is_anonymous:false});
+  const updateHolder=await holdSql(`begin; set local role authenticated; select set_config('request.jwt.claims','${anaJwt}',true);
+    select capital_web3.advisory_lite_intake_save('${releaseCase}','${JSON.stringify(releaseIntake)}'::jsonb,1,'${randomUUID()}',null); reset role;`, 'UPDATE_HELD');
+  try {
+    const pendingReview=local('rui','/rest/v1/rpc/advisory_review_report',{...reviewArgs,p_idempotency_key:randomUUID()});
+    const pendingReceipt=local('clientA','/rest/v1/rpc/advisory_record_receipt',{p_publication_id:litePublicationId});
+    let waiting=false;
+    for(let n=0;n<50&&!waiting;n++){
+      await new Promise(resolve=>setTimeout(resolve,100));
+      const check=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,input:"select count(*) from pg_stat_activity where wait_event_type='Lock' and query ilike '%advisory_review_report%';"});
+      requireCondition(check.status===0,'Lite review waiter query succeeds'); waiting=Number(check.stdout.trim())>0;
+    }
+    requireCondition(waiting,'Lite review waits for intake update');
+    let receiptWaiting=false;
+    for(let n=0;n<50&&!receiptWaiting;n++){
+      await new Promise(resolve=>setTimeout(resolve,100));
+      const check=spawnSync('psql',['-X','-qAt','-v','ON_ERROR_STOP=1'],{env:pgEnv,encoding:'utf8',timeout:3000,input:"select count(*) from pg_stat_activity where wait_event_type='Lock' and query ilike '%advisory_record_receipt%';"});
+      requireCondition(check.status===0,'Lite receipt waiter query succeeds'); receiptWaiting=Number(check.stdout.trim())>0;
+    }
+    requireCondition(receiptWaiting,'Lite receipt waits for intake update');
+    updateHolder.proc.stdin.end('commit;\n'); requireCondition(await updateHolder.done===0,'Lite intake update commits');
+    const [staleReview,staleReceipt]=await Promise.all([pendingReview,pendingReceipt]);
+    pass('Lite review waiting behind changed intake rejects stale snapshot',staleReview.body?.code==='23514');
+    pass('Lite receipt waiting behind changed intake is denied',[401,403,404].includes(staleReceipt.status));
+  } finally {if(updateHolder.proc.exitCode===null)updateHolder.proc.kill();}
+  const stalePublication=await local('rui','/rest/v1/rpc/advisory_publish_report',{...publishArgs,p_idempotency_key:randomUUID()});
+  pass('Lite old approved version cannot be published after intake changes',stalePublication.body?.code==='23514');
+  const staleEligibility=await local('rui',eligibilityPath,eligibilityArgs);
+  pass('Lite eligibility reports stale after a newer intake',staleEligibility.status===200 && staleEligibility.body.state==='stale' && staleEligibility.body.can_review===false && staleEligibility.body.can_publish_with_valid_recipients===false);
+  pass('New Lite intake suspends earlier client access', (await result('clientA','/reports/'+releaseVersion)).status===404);
+  pass('New Lite intake suspends earlier Storage fixture',!(await liteStorage('clientA',storageOld.object)).ok);
+  const oldDataApi=await local('clientA','/rest/v1/advisory_report_versions?select=id&id=eq.'+releaseVersion);
+  const oldPublication=await local('clientA','/rest/v1/advisory_publications?select=id&id=eq.'+litePublicationId);
+  pass('Data API hides previous Lite version and publication',oldDataApi.status===200 && oldDataApi.body.length===0 && oldPublication.status===200 && oldPublication.body.length===0);
+  const oldReceipt=await local('clientA','/rest/v1/rpc/advisory_record_receipt',{p_publication_id:litePublicationId});
+  pass('Stale Lite delivery cannot register receipt',[401,403,404].includes(oldReceipt.status));
+  const newDraft=await local('ana','/rest/v1/rpc/advisory_lite_create_draft',{p_case_id:releaseCase,p_expected_revision:2,p_idempotency_key:randomUUID()});
+  const newVersion=newDraft.body?.report_version_id;
+  requireCondition(newDraft.status===200 && UUID.test(newVersion) && newVersion!==releaseVersion,'new Lite draft created');
+  const newPackage=(await result('rui','/reports/'+newVersion+'/review-package')).body.data;
+  requireCondition(SHA.test(newPackage?.content_sha256) && SHA.test(newPackage?.manifest_sha256),'new Lite review package ready');
+  const nextReview={p_report_version_id:newVersion,p_decision:'approved',p_expected_content_sha256:newPackage.content_sha256,p_expected_manifest_sha256:newPackage.manifest_sha256,p_private_notes:'',p_idempotency_key:randomUUID()};
+  requireCondition((await local('rui','/rest/v1/rpc/advisory_review_report',nextReview)).status===200,'new Lite review approved');
+  const nextPublish={p_report_version_id:newVersion,p_recipient_user_ids:[users.clientA.id],p_expected_content_sha256:newPackage.content_sha256,p_expected_manifest_sha256:newPackage.manifest_sha256,p_expires_at:null,p_idempotency_key:randomUUID()};
+  const nextDelivery=await local('rui','/rest/v1/rpc/advisory_publish_report',nextPublish);
+  requireCondition(nextDelivery.status===200,'new Lite delivery published');
+  const storageNew=await storageFixture(newVersion,releaseCase);
+  pass('New Lite revision restores Storage fixture access',(await liteStorage('clientA',storageNew.object)).ok);
+  pass('Client sees new Lite revision, not the stale one',(await result('clientA','/reports/'+newVersion)).status===200 && (await result('clientA','/reports/'+releaseVersion)).status===404);
+  const nextDeliveryId=nextDelivery.body?.publication_id;
+  requireCondition(UUID.test(nextDeliveryId),'next Lite delivery id exists');
+  await sql(`insert into capital_web3_private.cofre_workspace_members(workspace_id,user_id,display_name,member_role) values('${workspaceA}','${users.clientA.id}','Dual role synthetic','analyst');
+    update capital_web3_private.cofre_workspace_members set active=false where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client';`);
+  const dualRoleReceipt=await local('clientA','/rest/v1/rpc/advisory_record_receipt',{p_publication_id:nextDeliveryId});
+  pass('Lite receipt rejects inactive client membership even with another active role',[401,403,404].includes(dualRoleReceipt.status));
+  const dualRoleData=await local('clientA','/rest/v1/advisory_report_versions?select=id&id=eq.'+newVersion);
+  pass('Lite recipient path requires active client membership despite another role',dualRoleData.status===200 && dualRoleData.body.length===0);
+  await sql(`update capital_web3_private.cofre_workspace_members set active=true where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='client';
+    delete from capital_web3_private.cofre_workspace_members where workspace_id='${workspaceA}' and user_id='${users.clientA.id}' and member_role='analyst';`);
+  await sql(`update capital_web3_private.cofre_lite_features set enabled=false where workspace_id='${workspaceA}';`);
+  pass('Disabled Lite feature suspends client access',(await result('clientA','/reports/'+newVersion)).status===404);
+  const offEligibility=await local('rui',eligibilityPath,{p_report_version_id:newVersion});
+  pass('Lite eligibility reports disabled feature',offEligibility.status===200 && offEligibility.body.state==='feature_disabled' && offEligibility.body.can_publish_with_valid_recipients===false);
+  pass('Disabled Lite feature suspends Storage fixture access',!(await liteStorage('clientA',storageNew.object)).ok);
+  await sql(`update capital_web3_private.cofre_lite_features set enabled=true where workspace_id='${workspaceA}';`);
+  pass('Re-enabled Lite feature never resurrects prior delivery',(await result('clientA','/reports/'+newVersion)).status===404);
+  const reenabledEligibility=await local('rui',eligibilityPath,{p_report_version_id:newVersion});
+  pass('Lite eligibility requires a new intake after feature cycle',reenabledEligibility.status===200 && reenabledEligibility.body.state==='new_intake_required' && reenabledEligibility.body.can_publish_with_valid_recipients===false);
+  pass('Re-enabled Lite feature does not restore old Storage fixture',!(await liteStorage('clientA',storageNew.object)).ok);
+  // Remove test-only associations before the old publication's manifest-bound revocation.
+  await sql(`begin; set local session_replication_role=replica; delete from capital_web3.advisory_report_assets where id in ('${storageOld.asset}','${storageNew.asset}'); commit;`);
+  const liteRevoked=await local('rui','/rest/v1/rpc/advisory_revoke_publication',{
+    p_publication_id:litePublicationId,p_recipient_user_id:null,p_reason:'synthetic test complete',
+    p_expected_content_sha256:releasePkg.content_sha256,p_expected_manifest_sha256:releasePkg.manifest_sha256,p_idempotency_key:randomUUID()});
+  pass('Lite explicitly revoked delivery is no longer readable',liteRevoked.status===200 && (await result('clientA','/reports/'+releaseVersion)).status===404);
+
+  // A legacy non-COFRE case has direct draft privileges. It must not fabricate Lite provenance.
+  const genericCase=randomUUID(), genericReport=randomUUID(), forgedVersion=randomUUID();
+  await sql(`insert into capital_web3.advisory_cases(id,client_safe_title,created_by) values('${genericCase}','Synthetic legacy','${users.ana.id}');
+    insert into capital_web3.advisory_case_staff(case_id,user_id,staff_role) values('${genericCase}','${users.ana.id}','analyst'),('${genericCase}','${users.rui.id}','reviewer'),('${genericCase}','${users.rui.id}','publisher');
+    insert into capital_web3.advisory_case_clients(case_id,user_id) values('${genericCase}','${users.clientA.id}');
+    insert into capital_web3.advisory_reports(id,case_id,created_by) values('${genericReport}','${genericCase}','${users.ana.id}');`);
+  const forged=await fetch(status.API_URL+'/rest/v1/advisory_report_versions',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+    headers:{apikey:status.ANON_KEY,Authorization:'Bearer '+users.ana.token,'Content-Type':'application/json','Content-Profile':'capital_web3','Accept-Profile':'capital_web3','Prefer':'return=representation'},
+    body:JSON.stringify({id:forgedVersion,report_id:genericReport,case_id:genericCase,version_number:1,content:{report_kind:'cofre_lite',status:'requires_review',summary:'synthetic forged'},created_by:users.ana.id})});
+  pass('Legacy case cannot forge a Lite report without server provenance',[400,401,403,409].includes(forged.status));
 
   const intakePath = '/cofre/cases/' + caseId + '/intake';
   const blank = await result('ana', intakePath);
@@ -349,3 +657,4 @@ select pg_sleep(4); commit;`);
     [401, 403].includes(oldDirect.status) || oldDirect.status === 200 && oldDirect.body.length === 0);
   return { workspaceA, workspaceB, caseId, versionId, newerVersion, publicationId };
 }
+

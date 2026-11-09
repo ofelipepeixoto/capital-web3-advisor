@@ -5,6 +5,7 @@
 import { validateCofreIntake, validatePartialCofreIntake, buildCofreReport } from './cofre.ts';
 import { listSyntheticJourneys, summarizeJourney } from './journeys.mjs';
 import { assessSignals } from './cofre-lite-rules.ts';
+import { validateLiteIntake } from './cofre-lite-intake.mjs';
 type EnvReader = (name: string) => string | undefined;
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type JsonObject = Record<string, unknown>;
@@ -238,7 +239,7 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         const result = await readBoundedJson(response, UPSTREAM_LIMIT);
         if (!response.ok) {
           const code = isObject(result) ? result.code : null;
-          if (pathname === '/rest/v1/rpc/advisory_lite_signals_save' && code === '54000') throw new ApiError(429, 'lite_save_limit');
+          if (['/rest/v1/rpc/advisory_lite_signals_save','/rest/v1/rpc/advisory_lite_intake_save','/rest/v1/rpc/advisory_lite_create_draft'].includes(pathname) && code === '54000') throw new ApiError(429, 'lite_save_limit');
           if (response.status >= 500) throw new ApiError(503, "upstream_unavailable");
           if (['/rpc/advisory_cofre_partial_save','/rpc/advisory_cofre_partial_restore'].some(suffix => pathname.endsWith(suffix)) && code === 'P0001' && isObject(result) && result.message === 'partial receipt capacity reached') throw new ApiError(429, 'partial_capacity_reached');
           if (code === "23505" || code === "23514") throw new ApiError(409, "state_conflict");
@@ -307,6 +308,30 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
         if (![body.expected_revision,body.base_revision].every(v => Number.isSafeInteger(v) && (v as number)>=1 && (v as number)<=10000)) throw new ApiError(400, 'invalid_request');
         const data = await rpc('advisory_cofre_partial_restore', {p_case_id:assertUuid(restoreRoute[1]),p_expected_revision:body.expected_revision,p_base_revision:body.base_revision,p_idempotency_key:assertUuid(body.idempotency_key)});
         return respond(200, {data, request_id:requestId});
+      }
+      const liteReportRoute = path.match(/^\/cofre\/cases\/([^/]+)\/lite-report$/);
+      if (liteReportRoute && request.method === 'POST') {
+        const caseId = assertUuid(liteReportRoute[1]);
+        const body = await readBody(request);
+        exactKeys(body, ['expected_revision', 'idempotency_key']);
+        if (!Number.isSafeInteger(body.expected_revision) || (body.expected_revision as number)<1 || (body.expected_revision as number)>10000) throw new ApiError(400, 'invalid_request');
+        const data = await rpc('advisory_lite_create_draft', {p_case_id:caseId,
+          p_expected_revision:body.expected_revision, p_idempotency_key:assertUuid(body.idempotency_key)});
+        return respond(200, {data, request_id:requestId});
+      }
+      const liteIntakeRoute = path.match(/^\/cofre\/cases\/([^/]+)\/lite-intake$/);
+      if (liteIntakeRoute) {
+        const caseId = assertUuid(liteIntakeRoute[1]);
+        if (request.method === 'GET') return respond(200, {data: await rpc('advisory_lite_intake_get', {p_case_id:caseId}), request_id:requestId});
+        if (request.method === 'POST') {
+          const body = await readBody(request); exactKeys(body, ['intake','expected_revision','idempotency_key','legacy_revision']);
+          if (body.legacy_revision !== null && (!Number.isSafeInteger(body.legacy_revision) || (body.legacy_revision as number)<1 || (body.legacy_revision as number)>10000)) throw new ApiError(400,'invalid_request');
+          if (!Number.isSafeInteger(body.expected_revision) || (body.expected_revision as number)<0 || (body.expected_revision as number)>10000) throw new ApiError(400,'invalid_request');
+          let intake; try { intake=validateLiteIntake(body.intake); } catch { throw new ApiError(400,'invalid_lite_intake'); }
+          const data=await rpc('advisory_lite_intake_save',{p_case_id:caseId,p_intake:intake,p_expected_revision:body.expected_revision,p_idempotency_key:assertUuid(body.idempotency_key),p_legacy_revision:body.legacy_revision});
+          return respond(200,{data,request_id:requestId});
+        }
+        throw new ApiError(404,'resource_unavailable');
       }
       const liteRoute = path.match(/^\/cofre\/cases\/([^/]+)\/lite-signals$/);
       if (liteRoute) {
@@ -388,6 +413,11 @@ export function createHandler(env: EnvReader, upstreamFetch: Fetcher = fetch, op
       }
       if (request.method === "GET" && path === "/publications") {
         return respond(200, { data: await database("/rest/v1/advisory_publications?select=id,case_id,report_version_id,published_at,expires_at&order=published_at.desc&limit=100"), request_id: requestId });
+      }
+      const liteEligibilityRoute = path.match(/^\/reports\/([^/]+)\/lite-eligibility$/);
+      if (liteEligibilityRoute && request.method === 'GET') {
+        const data = await rpc('advisory_lite_report_eligibility', {p_report_version_id:assertUuid(liteEligibilityRoute[1])});
+        return respond(200, {data, request_id:requestId});
       }
       const reportRoute = path.match(/^\/reports\/([^/]+)(?:\/(download|review-package|review|publish))?$/);
       if (reportRoute) {

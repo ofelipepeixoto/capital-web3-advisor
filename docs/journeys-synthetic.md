@@ -1,10 +1,10 @@
 # Contrato preliminar das jornadas sintéticas
 
-Este módulo introduz um motor puro e testável que organiza campos fechados para
-quatro jornadas, sem modificar a aplicação publicada. Não é uma interface,
-endpoint, persistência, integração externa, relatório, nota ou aprovação. Ainda
-precisa de escopo, autenticação, autorização, política de dados, UX, testes e
-integração com serviço antes de seu uso em uma jornada hospedada.
+Este módulo organiza campos fechados para quatro exercícios de equipe. Há uma
+interface e endpoints sintéticos autenticados na branch para revisão. Não há
+persistência, integração externa, relatório, nota ou aprovação para essas
+jornadas. Dados reais e uso hospedado exigem ainda política, contratos e testes
+próprios.
 
 | Jornada | Etapas propostas | Referência dos requisitos |
 |---|---|---|
@@ -37,3 +37,13 @@ a fonte de identidade, evidências, revisão e autorização numa futura integra
 Para verificar: `node --test tests/test_journeys.mjs` e `make check`. Os testes
 cobrem estados, lacunas, duplicação, isolamento de objetos e rejeição de campos
 extras; não comprovam comportamento hospedado, UX, políticas ou banco.
+
+## Exercícios no portal de homologação
+
+As quatro estruturas podem ser exploradas como exercícios de equipe por meio da
+API autenticada. Investidor avançado e empresa/DAO exibem orientações por etapa,
+sem solicitar valores, endereços ou detalhes de clientes. A lista separa lacunas
+de etapas desconhecidas ou não avaliadas. A API rejeita afirmações de revisão
+humana enviadas pelo cliente. Nada é gravado; não há diagnóstico ou entrega por
+caso nestes exercícios. As jornadas de cliente exigem contratos, persistência e
+revisão próprios antes de serem disponibilizadas.

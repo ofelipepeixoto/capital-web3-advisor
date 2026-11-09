@@ -291,3 +291,67 @@ test('Lite receipt quota maps to a specific sanitized limit even when upstream r
   const result=await handler(request(`/cofre/cases/${CASE}/lite-signals`,{method:'POST',body}));
   assert.equal(result.status,429); const text=await result.text(); assert.match(text,/lite_save_limit/);assert.ok(!text.includes('private marker'));
 });
+
+
+test('Lite 0.2 saves full closed enum intake through scoped RPC; missing and injected values denied', async () => {
+  const { SIGNAL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-rules.ts');
+  const { LITE_CONTROL_IDS } = await import('../supabase/functions/advisory-api/cofre-lite-intake.mjs');
+  const draft = {schema_version:'cofre-lite-intake-0.2', synthetic:true, consents:{assessment:true,storage:true},
+    profile:{experience:'unknown'}, controls:Object.fromEntries(LITE_CONTROL_IDS.map(id=>[id,'unknown'])),
+    signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'unknown']))};
+  const body={intake:draft,expected_revision:0,idempotency_key:KEY,legacy_revision:null};
+  const path=`/cofre/cases/${CASE}/lite-intake`, h=setup({data:{revision:1}});
+  assert.equal((await h.handler(request(path,{method:'POST',body,authenticated:false}))).status,401);
+  assert.equal((await h.handler(request(path,{method:'POST',body}))).status,200);
+  assert.ok(h.calls.at(-1).url.endsWith('/rest/v1/rpc/advisory_lite_intake_save'));
+  for (const invalid of [{...draft,profile:{experience:null}}, {...draft,controls:{...draft.controls,secret_exposure:'not_applicable'}},
+    {...draft,controls:{...draft.controls,extra:'secret-marker'}}, {...draft,consents:{assessment:true,storage:false}},
+    {...draft,signals:{...draft.signals,urgency:'secret-marker'}}]) {
+    const before=h.calls.length, res=await h.handler(request(path,{method:'POST',body:{...body,intake:invalid}}));
+    assert.equal(res.status,400); assert.equal(h.calls.length,before+1); assert.ok(!(await res.text()).includes('secret-marker'));
+  }
+});
+
+test('Lite report accepts only a saved revision and idempotency key, never client report content', async () => {
+  const path=`/cofre/cases/${CASE}/lite-report`, body={expected_revision:1,idempotency_key:KEY};
+  const result={case_id:CASE,intake_revision:1,report_version_id:VERSION};
+  const h=setup({data:result});
+  assert.equal((await h.handler(request(path,{method:'POST',body,authenticated:false}))).status,401);
+  assert.equal(h.calls.length,0);
+  const response=await h.handler(request(path,{method:'POST',body}));
+  assert.equal(response.status,200); assert.deepEqual((await response.json()).data,result);
+  assert.equal(h.calls.at(-1).url,BASE+'/rest/v1/rpc/advisory_lite_create_draft');
+  assert.deepEqual(JSON.parse(h.calls.at(-1).init.body),{p_case_id:CASE,p_expected_revision:1,p_idempotency_key:KEY});
+  for (const invalid of [{...body,content:{status:'approved'}},{...body,report_version_id:VERSION},
+    {...body,expected_revision:0},{...body,expected_revision:1.5},{...body,expected_revision:10001},
+    {...body,idempotency_key:'invalid'},{idempotency_key:KEY}]) {
+    const before=h.calls.length, denied=await h.handler(request(path,{method:'POST',body:invalid}));
+    assert.equal(denied.status,400); assert.equal(h.calls.length,before+1);
+  }
+  const invalidCase=await h.handler(request('/cofre/cases/nope/lite-report',{method:'POST',body}));
+  assert.equal(invalidCase.status,400);
+});
+
+test('Lite report hides database denial and maps conflict and quota without leaking details', async () => {
+  const path=`/cofre/cases/${CASE}/lite-report`, body={expected_revision:1,idempotency_key:KEY};
+  for (const [code,dbStatus,status] of [['42501',403,404],['23514',400,409],['23505',409,409],['54000',400,429]]) {
+    const h=setup({data:{code,message:'sensitive-marker'},dbStatus});
+    const response=await h.handler(request(path,{method:'POST',body}));
+    assert.equal(response.status,status); const text=await response.text();
+    assert.ok(!text.includes('sensitive-marker')); assert.ok(!text.includes(TOKEN));
+  }
+});
+
+test('Lite eligibility is an authenticated read-only scoped server query', async () => {
+  const path=`/reports/${VERSION}/lite-eligibility`;
+  const value={report_version_id:VERSION,state:'ready',review_state:'pending',can_review:true,can_publish_with_valid_recipients:false};
+  const h=setup({data:value});
+  assert.equal((await h.handler(request(path,{authenticated:false}))).status,401);
+  assert.equal(h.calls.length,0);
+  const res=await h.handler(request(path));
+  assert.equal(res.status,200); assert.deepEqual((await res.json()).data,value);
+  assert.equal(h.calls.at(-1).url,BASE+'/rest/v1/rpc/advisory_lite_report_eligibility');
+  assert.deepEqual(JSON.parse(h.calls.at(-1).init.body),{p_report_version_id:VERSION});
+  const denied=setup({data:{code:'42501',message:'private marker'},dbStatus:403});
+  const error=await denied.handler(request(path)); assert.equal(error.status,404); assert.ok(!(await error.text()).includes('private marker'));
+});

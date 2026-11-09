@@ -31,6 +31,39 @@ test('a late result cannot recreate exercise content after session cleanup',asyn
   assert.equal(root.textContent,'');assert.equal(ui.dirty,false);
 });
 
+test('failed catalog loads can be retried from the visible UI without logging out',async()=>{
+  const root=new Element('section');let calls=0,finish;
+  const ui=new JourneyExercise({root,api:async path=>{
+    assert.equal(path,'/cofre/journeys');calls++;
+    if(calls===1)throw Error('offline');
+    if(calls===2)return {data:[]};
+    return new Promise(resolve=>{finish=resolve;});
+  }});
+  await ui.load();assert.match(root.textContent,/Não foi possível carregar/);
+  await byText(root,'Tentar novamente').click();assert.equal(calls,2);
+  const retry=byText(root,'Tentar novamente');assert.ok(retry);
+  const pending=retry.click();assert.equal(calls,3);assert.match(root.textContent,/Carregando/);
+  await retry.click();assert.equal(calls,3,'a repeated click must not start another load');
+  finish({data:listSyntheticJourneys()});await pending;
+  for(const title of ['COFRE-6 Individual','RASTRO','Investidor avançado','Empresa ou DAO'])assert.ok(byText(root,title));
+  assert.equal(byText(root,'Tentar novamente'),undefined);
+  byText(root,'RASTRO').click();assert.match(root.textContent,/Plano de 90 dias/);
+});
+
+test('retry responses and detached controls cannot restore a cleared session',async()=>{
+  for(const outcome of ['resolve','reject']){
+    const root=new Element('section');let calls=0,finish;
+    const ui=new JourneyExercise({root,api:async()=>{
+      if(++calls===1)throw Error('offline');
+      return new Promise((resolve,reject)=>{finish=outcome==='resolve'?()=>resolve({data:listSyntheticJourneys()}):()=>reject(Error('offline'));});
+    }});
+    await ui.load();const retry=byText(root,'Tentar novamente');assert.ok(retry);
+    const pending=retry.click();ui.clear();finish();await pending;
+    assert.equal(root.textContent,'');assert.equal(ui.dirty,false);
+    await retry.click();assert.equal(calls,2);assert.equal(root.textContent,'');
+  }
+});
+
 test('editing during an in-flight check suppresses the stale result and permits retry', async()=>{
   const root=new Element('section');let resolve, calls=0;
   const ui=new JourneyExercise({root,api:(path,body)=>{if(!body)return Promise.resolve({data:listSyntheticJourneys()});calls++;return new Promise(r=>{resolve=r;});}});
@@ -42,4 +75,16 @@ test('editing during an in-flight check suppresses the stale result and permits 
   assert.ok(!root.textContent.includes('Etapas preenchidas no exemplo'));assert.equal(calls,1);
   const retry=form.handlers.submit({preventDefault(){}});assert.equal(calls,2);resolve({data:{status:'needs_input',counts:{}}});await retry;
   assert.ok(root.textContent.includes('Exercício incompleto'));
+});
+
+test('advanced investor and organization use authorized stateless preview without claiming a report',async()=>{
+  for (const [title, expected, field] of [['Investidor avançado','advanced_investor','Ativos e passivos'],['Empresa ou DAO','organization_dao','Multisig e módulos']]) {
+    const root=new Element('section'),calls=[];
+    const ui=new JourneyExercise({root,api:async(path,body)=>{calls.push({path,body});return {data:body?summarizeJourney(body):listSyntheticJourneys()};}});
+    await ui.load();byText(root,title).click();assert.ok(root.textContent.includes(field));
+    const selects=root.all().filter(x=>x.tagName==='select');selects[0].value='gap';selects[0].handlers.change();
+    await root.all().find(x=>x.tagName==='form').handlers.submit({preventDefault(){}});
+    assert.equal(calls[1].body.journey,expected);assert.equal(calls[1].body.synthetic,true);
+    assert.match(root.textContent,/Exercício incompleto/);assert.match(root.textContent,/Lacuna declarada/);assert.match(root.textContent,/Nada foi salvo/);
+  }
 });

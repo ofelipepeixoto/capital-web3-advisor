@@ -1,5 +1,5 @@
 import { PortalClient, validateConfig } from './client.mjs';
-import { CofreWorkspace, renderCofreReport, renderPublicationContext } from './cofre-ui.mjs';
+import { CofreWorkspace, renderCofreReport, renderLiteReport, renderPublicationContext } from './cofre-ui.mjs';
 import { createAuthControls, consumeAuthFragment } from './auth-controls.mjs';
 import { AuthControlsUI } from './auth-controls-ui.mjs';
 import { LiteSimulation } from './cofre-lite-simulation.mjs';
@@ -15,6 +15,7 @@ const lite = new LiteSimulation($('lite-workspace'), {
   // Case projection has no workspace id; the server checks workspace membership and capability.
   cases: () => (cofre?.cases || []).filter(item => session?.assignments?.some(a => a.case_id === item.id && ['analyst','admin'].includes(a.staff_role))),
   confirm: text => window.confirm(text),
+  onGenerated: async reportId => { const epoch = generation; await refresh(); if (epoch !== generation || !session) return; const report = reports.find(row => row.id === reportId); if (!report) throw new Error('Rascunho indisponível.'); showView('diagnostics', true); await openReport(report); },
 });
 const exercises = new JourneyExercise({root: $('journey-exercise'), api: (path, body) => client.api(path, body)});
 let accessLink = null, accessLinkError = false;
@@ -110,6 +111,7 @@ async function refresh() {
 }
 function facts(content, staff) {
   if (content.report_kind === 'cofre_individual') return renderCofreReport(content, { staff });
+  if (content.report_kind === 'cofre_lite') return renderLiteReport(content);
   const box = element('section');
   box.append(element('h3', 'Contexto da análise'));
   box.append(element('p', typeof content.summary === 'string' ? content.summary : 'Confira o conteúdo e as limitações registrados no documento.'));
@@ -127,6 +129,10 @@ function facts(content, staff) {
   if (staff) { const full = element('details', '', 'technical'); full.append(element('summary', 'Documento técnico (JSON) · somente equipe'), element('pre', JSON.stringify(content, null, 2))); box.append(full); }
   return box;
 }
+function clearDisplayedReport(text = 'Confira o acesso novamente') {
+  $('detail').replaceChildren(element('h2', text), element('p', 'Reabra a lista para conferir a versão e o acesso atuais.'));
+  for (const choice of $('reports').querySelectorAll('button')) choice.setAttribute('aria-pressed', 'false');
+}
 function digestFields(pkg) {
   return { expected_content_sha256: pkg.content_sha256, expected_manifest_sha256: pkg.manifest_sha256 };
 }
@@ -136,7 +142,8 @@ async function mutate(path, body, success, report, readGeneration) {
   const fingerprint = path + JSON.stringify(body);
   if (!requestKeys.has(fingerprint)) requestKeys.set(fingerprint, crypto.randomUUID());
   const epoch = generation;
-  await client.api(path, { ...body, idempotency_key: requestKeys.get(fingerprint) });
+  try { await client.api(path, { ...body, idempotency_key: requestKeys.get(fingerprint) }); }
+  catch (error) { if (epoch === generation && readGeneration === detailGeneration && [403, 404, 409].includes(error.status)) clearDisplayedReport(); throw error; }
   if (epoch !== generation || !session) return;
   message(success); await refresh();
   if (epoch === generation && reports.some(r => r.id === report.id)) await openReport(report);
@@ -146,14 +153,20 @@ async function openReport(report) {
   const panel = $('detail'); panel.replaceChildren(element('p', 'Verificando acesso…'));
   const base = '/reports/' + report.id;
   const staffRoles = roles(report.case_id), staff = staffRoles.length > 0;
-  let pkg, row, recipients = [];
+  let pkg, row, eligibility = null, recipients = [];
   try {
     if (staff) {
       const [result, members] = await Promise.all([client.api(base + '/review-package'), client.api('/cases/' + report.case_id + '/recipients')]);
       pkg = result.data; recipients = members.data; row = { content: pkg.content, content_sha256: pkg.content_sha256 };
+      if (pkg.content?.report_kind === 'cofre_lite') {
+        try {
+          const check = (await client.api(base + '/lite-eligibility')).data;
+          if (check?.report_version_id === report.id && ['feature_disabled', 'new_intake_required', 'stale', 'blocked', 'incomplete', 'ready', 'unavailable'].includes(check.state) && ['pending', 'approved', 'rejected'].includes(check.review_state) && typeof check.can_review === 'boolean' && typeof check.can_publish_with_valid_recipients === 'boolean') eligibility = check;
+        } catch (error) { if ([403, 404].includes(error.status)) throw error; }
+      }
     } else row = (await client.api(base)).data;
   } catch (error) {
-    if (epoch === generation && readGeneration === detailGeneration) panel.replaceChildren(element('h2', 'Diagnóstico indisponível'));
+    if (epoch === generation && readGeneration === detailGeneration) clearDisplayedReport('Diagnóstico indisponível');
     throw error;
   }
   if (epoch !== generation || readGeneration !== detailGeneration || !session) return;
@@ -175,9 +188,9 @@ async function openReport(report) {
       if (epoch !== generation || readGeneration !== detailGeneration) return;
       if (fresh.data?.content_sha256 !== row.content_sha256) throw new Error('A versão mudou. Reabra o diagnóstico antes de imprimir.');
       window.print();
-    } catch (error) { if (epoch === generation && readGeneration === detailGeneration) panel.replaceChildren(element('h2', 'Confira o acesso novamente'), element('p', error.message)); throw error; }
+    } catch (error) { if (epoch === generation && readGeneration === detailGeneration) clearDisplayedReport(); throw error; }
   }, 'primary'));
-  if (staff) actions.append(button('Baixar JSON técnico', async () => {
+  if (staff && content.report_kind !== 'cofre_lite') actions.append(button('Baixar JSON técnico', async () => {
     const value = await client.api(base + '/download');
     if (epoch !== generation || readGeneration !== detailGeneration) return;
     const url = URL.createObjectURL(new Blob([JSON.stringify(value.data, null, 2)], { type: 'application/json' }));
@@ -187,7 +200,7 @@ async function openReport(report) {
   if (!staff) {
     for (const publication of publications.filter(p => p.report_version_id === report.id)) {
       actions.append(button('Confirmar recebimento', async () => {
-        await client.api('/publications/' + publication.id + '/receipt', {});
+        try { await client.api('/publications/' + publication.id + '/receipt', {}); } catch (error) { if (epoch === generation && readGeneration === detailGeneration && [403, 404, 409].includes(error.status)) clearDisplayedReport(); throw error; }
         if (epoch === generation) message('Recebimento registrado. Isso não aprova uma estratégia ou transação.');
       }));
     }
@@ -206,7 +219,12 @@ async function openReport(report) {
   acknowledgement.append(observed, document.createTextNode('Li o documento completo e conferi esta versão.')); review.append(acknowledgement);
   const insist = () => { if (!observed.checked) throw new Error('Confirme a leitura desta versão antes de continuar.'); };
   const controls = element('div', '', 'actions');
-  if (!reviewState && !hasAssets && staffRoles.some(r => ['reviewer', 'admin'].includes(r))) {
+  if (content.report_kind === 'cofre_lite') {
+    const stateText = { feature_disabled: 'A função COFRE Lite está desligada.', new_intake_required: 'Salve uma nova revisão e gere outro rascunho antes de continuar.', stale: 'As respostas mudaram. Gere outro rascunho a partir da revisão atual.', blocked: 'O atendimento tem alerta crítico e precisa de apoio antes da revisão.', incomplete: 'Faltam respostas antes da revisão.', ready: 'Esta versão está pronta para a conferência humana.', unavailable: 'A situação desta versão não está disponível.' };
+    review.append(element('p', eligibility ? stateText[eligibility.state] : 'Não foi possível confirmar a situação desta versão. Reabra o diagnóstico antes de continuar.'));
+    review.append(element('p', 'Salvar uma nova revisão suspende as entregas Lite anteriores deste atendimento. Será preciso gerar, revisar e publicar uma nova versão. Desligar e reativar a função também exige nova revisão e entrega.'));
+  }
+  if (!reviewState && !hasAssets && (content.report_kind !== 'cofre_lite' || (eligibility?.state === 'ready' && eligibility.can_review && content.status === 'requires_review')) && staffRoles.some(r => ['reviewer', 'admin'].includes(r))) {
     for (const [decision, label] of [['approved', 'Aprovar esta versão'], ['rejected', 'Rejeitar esta versão']]) {
       controls.append(button(label, async () => { insist(); await mutate(base + '/review', {
         decision, ...digestFields(pkg), private_notes: '',
@@ -214,8 +232,9 @@ async function openReport(report) {
     }
   }
   review.append(controls);
-  if (reviewState === 'approved' && !hasAssets && staffRoles.some(r => ['publisher', 'admin'].includes(r))) {
+  if ((content.report_kind !== 'cofre_lite' || (eligibility?.state === 'ready' && eligibility.can_publish_with_valid_recipients && content.status === 'requires_review')) && reviewState === 'approved' && !hasAssets && staffRoles.some(r => ['publisher', 'admin'].includes(r))) {
     review.append(element('h3', 'Publicar para destinatários'));
+    if (content.report_kind === 'cofre_lite') review.append(element('p', 'A entrega libera esta versão revisada apenas às contas escolhidas, até a validade informada. O servidor conferirá a versão e o acesso novamente.'));
     const selected = [];
     for (const recipient of recipients) {
       const label = element('label', '', 'recipient'), check = document.createElement('input'); check.type = 'checkbox'; check.value = recipient.user_id;
