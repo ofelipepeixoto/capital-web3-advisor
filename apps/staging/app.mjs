@@ -288,7 +288,7 @@ $('open-cofre').addEventListener('click', () => { if (session && !$('workspace-n
 $('cases-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) showView('cases', true); });
 $('lite-tab').addEventListener('click', () => { if (session && !$('workspace-nav').hidden) { if (!lite.pending) lite.render(); showView('lite', true); } });
 $('reports-tab').addEventListener('click', () => { if (session) showView('diagnostics', true); });
-window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty || exercises.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload', event => { if ((cofre.dirty || lite.dirty || lite.routineDirty || exercises.dirty) && session) { event.preventDefault(); event.returnValue = ''; } });
 
 async function continueAccess(current) {
   if (!Array.isArray(current.assignments) || typeof current.user_id !== 'string') throw new Error('Sessão inválida.');
@@ -316,7 +316,7 @@ $('login-form').addEventListener('submit', async event => {
 });
 $('logout').addEventListener('click', async () => {
   if (cofre?.pending || lite.pending) { message('Aguarde o resultado da operação atual antes de sair. Se a conexão falhar, confira o atendimento salvo antes de repetir.'); return; }
-  if ((cofre?.dirty || lite.dirty || exercises.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
+  if ((cofre?.dirty || lite.dirty || lite.routineDirty || exercises.dirty) && !window.confirm('Há respostas não salvas. Se sair agora, essas alterações serão perdidas. Deseja sair?')) return;
   try { await client.logout(); message('Sessão encerrada neste navegador.'); }
   catch { message('Acesso local encerrado. O servidor não confirmou a saída; tente novamente ao recuperar a conexão.'); }
 });
