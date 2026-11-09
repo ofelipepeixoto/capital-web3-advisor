@@ -32,7 +32,12 @@ export class JourneyExercise {
       this.catalog=result.data.filter(x=>['cofre6_individual','rastro','advanced_investor','organization_dao'].includes(x.id) && Array.isArray(x.stages) && x.stages.length>0 && x.stages.every(id=>typeof LABELS[id]==='string'));
       if(this.catalog.length!==4 || new Set(this.catalog.map(x=>x.id)).size!==4)throw Error('Estruturas indisponíveis.');
       this.showPicker();
-    } catch {if(epoch!==this.epoch)return;this.root.replaceChildren(el('p','Não foi possível carregar o exercício. Atualize o acesso e tente novamente.'));}
+    } catch {
+      if(epoch!==this.epoch)return;
+      const retry=el('button','Tentar novamente');retry.type='button';
+      retry.addEventListener('click',()=>{if(epoch===this.epoch)return this.load();});
+      this.root.replaceChildren(el('p','Não foi possível carregar o exercício. Verifique o acesso e tente novamente.'),retry);
+    }
   }
   showPicker() {
     this.epoch++;this.dirty=false;this.root.replaceChildren();

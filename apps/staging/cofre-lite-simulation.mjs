@@ -109,9 +109,10 @@ export class LiteSimulation {
       if (!intake || intake.schema_version !== 'cofre-lite-signals-0.1' || intake.synthetic !== true ||
           intake.consents?.assessment !== true || intake.consents?.storage !== true) throw new Error('Resposta inválida.');
       assessSignals(intake.signals);
-      this.answers = { ...intake.signals }; this.revision = 0; this.loaded = true; this.legacyAvailable = false;
+      // Import only missing answers; choices already made in this session take precedence.
+      this.answers = { ...intake.signals, ...this.answers }; this.revision = 0; this.loaded = true; this.legacyAvailable = false;
       this.consents = { assessment: false, storage: false }; this.dirty = true;
-      this.notice = 'Sinais anteriores carregados. Revise as demais respostas e confirme os consentimentos para salvar a nova versão.';
+      this.notice = 'Sinais anteriores carregados sem substituir respostas desta sessão. Revise as respostas e confirme os consentimentos para salvar a nova versão.';
     } catch (error) { if (epoch === this.epoch && id === this.caseId) this.notice = error.legacyChanged ? 'Os sinais anteriores mudaram. Use Carregar respostas do atendimento para conferir a revisão atual.' : 'Não foi possível carregar os sinais anteriores. Tente novamente ou procure a equipe.'; }
     finally { if (epoch === this.epoch && id === this.caseId) { this.pending = false; this.render(); } }
   }

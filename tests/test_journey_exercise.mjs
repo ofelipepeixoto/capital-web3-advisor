@@ -31,6 +31,39 @@ test('a late result cannot recreate exercise content after session cleanup',asyn
   assert.equal(root.textContent,'');assert.equal(ui.dirty,false);
 });
 
+test('failed catalog loads can be retried from the visible UI without logging out',async()=>{
+  const root=new Element('section');let calls=0,finish;
+  const ui=new JourneyExercise({root,api:async path=>{
+    assert.equal(path,'/cofre/journeys');calls++;
+    if(calls===1)throw Error('offline');
+    if(calls===2)return {data:[]};
+    return new Promise(resolve=>{finish=resolve;});
+  }});
+  await ui.load();assert.match(root.textContent,/Não foi possível carregar/);
+  await byText(root,'Tentar novamente').click();assert.equal(calls,2);
+  const retry=byText(root,'Tentar novamente');assert.ok(retry);
+  const pending=retry.click();assert.equal(calls,3);assert.match(root.textContent,/Carregando/);
+  await retry.click();assert.equal(calls,3,'a repeated click must not start another load');
+  finish({data:listSyntheticJourneys()});await pending;
+  for(const title of ['COFRE-6 Individual','RASTRO','Investidor avançado','Empresa ou DAO'])assert.ok(byText(root,title));
+  assert.equal(byText(root,'Tentar novamente'),undefined);
+  byText(root,'RASTRO').click();assert.match(root.textContent,/Plano de 90 dias/);
+});
+
+test('retry responses and detached controls cannot restore a cleared session',async()=>{
+  for(const outcome of ['resolve','reject']){
+    const root=new Element('section');let calls=0,finish;
+    const ui=new JourneyExercise({root,api:async()=>{
+      if(++calls===1)throw Error('offline');
+      return new Promise((resolve,reject)=>{finish=outcome==='resolve'?()=>resolve({data:listSyntheticJourneys()}):()=>reject(Error('offline'));});
+    }});
+    await ui.load();const retry=byText(root,'Tentar novamente');assert.ok(retry);
+    const pending=retry.click();ui.clear();finish();await pending;
+    assert.equal(root.textContent,'');assert.equal(ui.dirty,false);
+    await retry.click();assert.equal(calls,2);assert.equal(root.textContent,'');
+  }
+});
+
 test('editing during an in-flight check suppresses the stale result and permits retry', async()=>{
   const root=new Element('section');let resolve, calls=0;
   const ui=new JourneyExercise({root,api:(path,body)=>{if(!body)return Promise.resolve({data:listSyntheticJourneys()});calls++;return new Promise(r=>{resolve=r;});}});

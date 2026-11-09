@@ -156,6 +156,60 @@ test('legacy data that changes before explicit import is not loaded or silently 
   assert.equal(ui.loaded,false);assert.equal(ui.legacyAvailable,true);assert.match(ui.notice,/sinais anteriores mudaram/i);assert.match(ui.notice,/Carregar respostas do atendimento/);assert.deepEqual(ui.answers,{});
 });
 
+test('legacy import preserves session answers through save and a fresh load', async () => {
+  const { SIGNAL_IDS } = await import('../apps/staging/cofre-lite-signals.mjs');
+  const signals = Object.fromEntries(SIGNAL_IDS.map(id => [id, 'yes']));
+  let stored = null;
+  const writes = [];
+  const api = async (path, body) => {
+    if (path.endsWith('/lite-signals')) return {data:{revision:2,intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals}}};
+    if (!body) return {data:stored || {legacy_available:true,legacy_revision:2}};
+    writes.push(structuredClone(body));
+    stored = {revision:1,intake:structuredClone(body.intake)};
+    return {data:{revision:1}};
+  };
+  const options = {api,cases:()=>[{id:'case-1'}],confirm:()=>true};
+  const root = new Element('section'), ui = new LiteSimulation(root,options);
+  ui.caseId='case-1';await ui.load();
+  select(root,'lite-experience','some');select(root,'lite-backup','no');
+  find(root,'button','Continuar').click();
+  for (const id of ['vault','apps','spending','testing','watch']) select(root,'lite-'+id,'not_applicable');
+  find(root,'button','Continuar').click();
+  select(root,'lite-recovery','yes');select(root,'lite-secret_exposure','no');
+  find(root,'button','Continuar').click();
+  select(root,'lite-source','unknown');select(root,'lite-urgency','no');select(root,'lite-secret_request','unknown');
+  find(root,'button','Continuar').click();
+  select(root,'lite-permissions','no');select(root,'lite-payload','yes');
+  find(root,'button','Continuar').click();select(root,'lite-routine','yes');
+  const entered = {...ui.answers};
+  await ui.importLegacy();
+  for (const [id,value] of Object.entries(entered)) assert.equal(ui.answers[id],value,id);
+  assert.equal(ui.answers.guaranteed_return,'yes');
+  assert.equal(ui.dirty,true);assert.equal(ui.loaded,true);assert.equal(ui.legacyAvailable,false);
+  assert.deepEqual(ui.consents,{assessment:false,storage:false});
+  await ui.save();assert.equal(writes.length,0);
+  for (const input of root.all().filter(n=>n.type==='checkbox')) {input.checked=true;input.handlers.change();}
+  await ui.save();assert.equal(writes.length,1);assert.equal(writes[0].legacy_revision,2);
+  const saved = ui.intake();
+  ui.clear();ui.caseId='case-1';await ui.load();
+  assert.deepEqual(ui.intake(),saved);assert.equal(ui.dirty,false);assert.equal(ui.revision,1);
+  for (const [id,value] of Object.entries(entered)) assert.equal(ui.answers[id],value,id);
+});
+
+test('failed or superseded legacy import cannot replace session answers', async () => {
+  const { SIGNAL_IDS } = await import('../apps/staging/cofre-lite-signals.mjs');
+  const data = {revision:2,intake:{schema_version:'cofre-lite-signals-0.1',synthetic:true,consents:{assessment:true,storage:true},signals:Object.fromEntries(SIGNAL_IDS.map(id=>[id,'yes']))}};
+  let finish;
+  const root = new Element('section'), ui = new LiteSimulation(root,{api:()=>new Promise(resolve=>{finish=resolve}),cases:()=>[{id:'case-1'}]});
+  ui.caseId='case-1';ui.legacyAvailable=true;ui.legacyRevision=2;ui.answers={experience:'some',backup:'no'};ui.dirty=true;
+  const invalid = ui.importLegacy();
+  assert.ok(root.all().filter(n=>n.tagName==='input').every(n=>n.disabled));
+  finish({data:{...data,revision:3}});await invalid;
+  assert.deepEqual(ui.answers,{experience:'some',backup:'no'});assert.equal(ui.dirty,true);assert.equal(ui.legacyAvailable,true);
+  const pending = ui.importLegacy();ui.clear();finish({data});await pending;
+  assert.deepEqual(ui.answers,{});assert.equal(ui.loaded,false);assert.equal(root.textContent,'');
+});
+
 test('new blank intake requires explicit confirmation when legacy data exists', async () => {
   const root=new Element('section');let confirmed=false;
   const ui=new LiteSimulation(root,{api:async()=>({data:{legacy_available:true,legacy_revision:4}}),cases:()=>[{id:'case-1'}],confirm:()=>confirmed});
