@@ -101,3 +101,12 @@ test('pending load disables inputs and navigation until the server response arri
   release({data:null}); await pending;
   assert.equal(find(root,'button','Continuar').disabled,false);
 });
+
+test('uncertain Lite save keeps local answers and retries identical payload and idempotency key', async () => {
+  let attempt=0; const calls=[];
+  const api=async(path,body)=>{calls.push({path,body:structuredClone(body)});if(++attempt===1)throw new Error('timeout');return {data:{revision:1}};};
+  const ui=new LiteSimulation(new Element('section'),{api,cases:()=>[{id:'case-1'}],confirm:()=>true});
+  ui.caseId='case-1';ui.loaded=true;ui.consents={assessment:true,storage:true};ui.answers.urgency='yes';ui.dirty=true;
+  await ui.save();assert.equal(ui.answers.urgency,'yes');assert.equal(ui.dirty,true);assert.match(ui.notice,/Não foi possível confirmar/);
+  await ui.save();assert.equal(ui.revision,1);assert.equal(ui.dirty,false);assert.deepEqual(calls[0],calls[1]);
+});
